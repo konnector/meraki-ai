@@ -3,6 +3,8 @@
 import { useRef, useState, useEffect, type MouseEvent, type KeyboardEvent, type ChangeEvent } from "react"
 import { cn } from "@/lib/utils"
 import { useSpreadsheet } from "@/context/spreadsheet-context"
+import Cell from "@/components/SpreadSheet/Cell"
+import { Button } from "@/components/ui/button"
 
 // Add global styles to prevent text selection during cell selection
 const preventSelectionStyle = {
@@ -31,6 +33,7 @@ export default function SpreadsheetGrid() {
     isCellFormula,
     undo,
     redo,
+    zoomLevel
   } = useSpreadsheet()
 
   const gridRef = useRef<HTMLDivElement>(null)
@@ -555,17 +558,25 @@ export default function SpreadsheetGrid() {
       ref={gridRef}
       style={isSelecting || isResizingColumn || isResizingRow ? preventSelectionStyle : undefined}
     >
-      <div className="inline-block min-w-full">
+      <div 
+        className="inline-block min-w-full origin-top-left"
+        style={{ 
+          transform: `scale(${zoomLevel / 100})`,
+          transformOrigin: 'top left',
+          width: `${(100 / zoomLevel) * 100}%`,
+          height: `${(100 / zoomLevel) * 100}%`
+        }}
+      >
         <div className="grid sticky top-0 z-10" style={{ gridTemplateColumns: `40px ${columnWidths.map(w => `${w}px`).join(' ')}` }}>
           {/* Empty corner cell */}
-          <div className="h-10 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center" style={preventSelectionStyle}></div>
+          <div className="h-8 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center" style={preventSelectionStyle}></div>
 
           {/* Column headers */}
           {columnHeaders.map((header, colIndex) => (
             <div key={header} className="relative">
               <div
                 className={cn(
-                  "h-10 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors",
+                  "h-8 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors",
                   isEntireColumnSelected(colIndex) && "bg-gray-200"
                 )}
                 style={preventSelectionStyle}
@@ -649,57 +660,11 @@ export default function SpreadsheetGrid() {
                       autoFocus
                     />
                   ) : (
-                    <div
-                      className={cn(
-                        "px-2 py-1 overflow-hidden text-sm whitespace-nowrap h-full flex items-center",
-                        cells[cellId]?.error && "text-red-500"
-                      )}
-                      style={{
-                        fontFamily:
-                          cells[cellId]?.format?.fontFamily === "serif"
-                            ? "serif"
-                            : cells[cellId]?.format?.fontFamily === "mono"
-                              ? "monospace"
-                              : cells[cellId]?.format?.fontFamily === "inter"
-                                ? "Inter, sans-serif"
-                                : cells[cellId]?.format?.fontFamily === "roboto"
-                                  ? "Roboto, sans-serif"
-                                  : cells[cellId]?.format?.fontFamily === "poppins"
-                                    ? "Poppins, sans-serif"
-                                    : "sans-serif",
-                        fontSize:
-                          cells[cellId]?.format?.fontSize === "xs"
-                            ? "10px"
-                            : cells[cellId]?.format?.fontSize === "sm"
-                              ? "12px"
-                              : cells[cellId]?.format?.fontSize === "lg"
-                                ? "16px"
-                                : cells[cellId]?.format?.fontSize === "xl"
-                                  ? "18px"
-                                  : cells[cellId]?.format?.fontSize === "2xl"
-                                    ? "20px"
-                                    : cells[cellId]?.format?.fontSize === "3xl"
-                                      ? "24px"
-                                      : "14px",
-                        fontWeight: cells[cellId]?.format?.bold ? "bold" : "normal",
-                        fontStyle: cells[cellId]?.format?.italic ? "italic" : "normal",
-                        textDecoration: cells[cellId]?.format?.underline ? "underline" : "none",
-                        textAlign: cells[cellId]?.format?.align || "left",
-                        color: cells[cellId]?.error ? "red" : (cells[cellId]?.format?.textColor || "inherit"),
-                        backgroundColor: cells[cellId]?.format?.fillColor || "transparent",
-                        width: "100%",
-                        justifyContent:
-                          cells[cellId]?.format?.align === "center"
-                            ? "center"
-                            : cells[cellId]?.format?.align === "right"
-                              ? "flex-end"
-                              : "flex-start",
-                        ...(preventSelectionStyle as any),
-                      }}
-                    >
-                      {/* Display calculated value for formulas, otherwise show raw value */}
-                      {isCellFormula(cellId) ? getCellDisplayValue(cellId) : cells[cellId]?.value || ""}
-                    </div>
+                    <Cell
+                      data={cells[cellId]}
+                      isEditing={false}
+                      editValue=""
+                    />
                   )}
                 </div>
               )

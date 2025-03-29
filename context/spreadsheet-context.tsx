@@ -6,6 +6,7 @@ import { useFormulaCalculation } from "@/hooks/useFormulaCalculation"
 import { HistoryManager } from "@/lib/spreadsheet/HistoryManager"
 import { useSpreadsheetApi } from '@/lib/supabase/secure-api'
 
+// Update this in your spreadsheet-context.tsx file
 type CellFormat = {
   bold?: boolean
   italic?: boolean
@@ -16,6 +17,12 @@ type CellFormat = {
   type?: "text" | "number" | "formula"
   textColor?: string
   fillColor?: string
+  // Add these new properties for number formatting
+  numberFormat?: "general" | "number" | "currency" | "percent" | "date" | "time"
+  decimals?: number
+  currencySymbol?: string
+  dateFormat?: string
+  timeFormat?: string
 }
 
 type ImportOptions = {
@@ -58,6 +65,8 @@ type SpreadsheetContextType = {
   title: string
   isStarred: boolean
   isLoading: boolean
+  zoomLevel: number
+  setZoomLevel: (level: number) => void
   setTitle: (title: string) => void
   toggleStar: () => void
   updateCell: (cellId: string, value: string) => void
@@ -106,6 +115,7 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
   const isHistoryAction = useRef(false);
   const spreadsheetApi = useSpreadsheetApi();
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [zoomLevel, setZoomLevel] = useState<number>(100);
 
   // Add formula calculation hook
   const { updateDependencies, calculateFormula, getAffectedCells } = useFormulaCalculation();
@@ -938,6 +948,8 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
     title,
     isStarred,
     isLoading,
+    zoomLevel,
+    setZoomLevel,
     setTitle: handleSetTitle,
     toggleStar,
     updateCell,

@@ -27,13 +27,16 @@
 - ✅ Basic formatting
 - ✅ Undo/redo
 - ✅ Copy/paste
+- ✅ Row/column resizing
+- ✅ Zoom functionality (50-200%)
 
-#### Formula System (Partially Complete)
+#### Formula System (Mostly Complete)
 - ✅ Basic arithmetic operations
 - ✅ SUM function
 - ✅ Cell references
 - ✅ Error handling
 - ✅ Dependency tracking
+- ✅ Proper dependency order calculation
 - 🟨 Additional functions (in progress)
 
 ### Phase 3: Advanced Features 🟨
@@ -48,10 +51,17 @@
 - 🟨 Formula Improvements
   - ✅ Cell range support
   - ✅ Reference adjustment
+  - ✅ Dependency depth tracking
   - 🟨 Multi-sheet references
   - 🟨 Custom functions
 
-#### Data Validation (Planned)
+#### Data Formatting & Validation (In Progress)
+- ✅ Number formatting
+  - ✅ General, Number, Currency formats
+  - ✅ Percentage formatting
+  - ✅ Date/Time formatting
+  - ✅ Decimal place control
+  - ✅ Locale-aware formatting
 - ⬜ Input validation rules
 - ⬜ Custom cell types
 - ⬜ Data format enforcement
@@ -60,8 +70,14 @@
 
 #### UI Enhancements (In Progress)
 - ✅ Cell formatting
-- ✅ Font controls
-- ✅ Color picker
+  - ✅ Bold, italic, underline
+  - ✅ Text alignment
+  - ✅ Font controls
+  - ✅ Color controls
+- ✅ Grid enhancements
+  - ✅ Column/row resizing
+  - ✅ Zoom functionality
+  - ✅ Better selection visualization
 - 🟨 Conditional formatting
 - ⬜ Frozen rows/columns
 - ⬜ Cell merging
@@ -114,12 +130,23 @@
   - ⬜ Data pagination
 - 🟨 Formula optimization
   - ✅ Dependency graph
+  - ✅ Dependency depth calculation
   - 🟨 Calculation caching
   - ⬜ Batch updates
 - 🟨 Memory management
   - ⬜ Memory profiling
   - ⬜ Resource cleanup
   - ⬜ Cache eviction
+
+### UI/UX Improvements
+- ✅ Responsive sizing
+  - ✅ Column width resizing
+  - ✅ Row height resizing
+  - ✅ Zoom functionality
+- 🟨 Advanced visualization
+  - ✅ Selection highlighting
+  - 🟨 Conditional formatting
+  - ⬜ Data visualization
 
 ### Testing Implementation
 - 🟨 Unit Tests
@@ -159,10 +186,11 @@
    - Add UI for validation
    - Error visualization
 
-3. Enhance Mobile Support
-   - Improve touch handling
-   - Optimize for small screens
-   - Add mobile-specific UI
+3. Continue UI Enhancements
+   - Implement conditional formatting
+   - Add frozen rows/columns 
+   - Work on cell merging
+   - Enhance keyboard shortcuts
 
 4. Begin Testing Implementation
    - Set up testing framework

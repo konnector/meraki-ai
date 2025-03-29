@@ -20,6 +20,8 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
   - Undo/redo functionality
   - Cell range selection
   - Copy/paste with formula adjustments
+  - Advanced number formatting
+  - Zoom functionality (50% to 200%)
 
 ## Features
 
@@ -49,6 +51,9 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
   - Font size options
   - Text and background colors
   - Custom cell types (text, number)
+  - Advanced number formatting (currency, percent, date, time)
+  - Decimal place control
+  - Format preservation during copy/paste
 
 - **Formula Support**
   - Basic arithmetic operations
@@ -58,6 +63,15 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
   - Formula bar with editing
   - Cell reference validation
   - Formula reference adjustment during copy/paste
+  - Proper dependency order calculation
+
+- **UI/UX Enhancements**
+  - Zoom controls (50% to 200%)
+  - Column width resizing
+  - Row height resizing
+  - Keyboard shortcuts
+  - Enhanced context menus
+  - Cell selection visualization
 
 ### Advanced Features (🟨 In Progress)
 - **Enhanced Formula System**
@@ -74,9 +88,8 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
 
 - **Advanced UI Features**
   - Conditional formatting
-  - Custom number formats
-  - Cell merging
   - Frozen rows/columns
+  - Cell merging
 
 ### Upcoming Features (⬜ Planned)
 - **Collaboration**
@@ -94,7 +107,6 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
   - Smart formatting
 
 - **Enhanced Grid Features**
-  - Cell merging
   - Auto-fill
   - Custom cell validation
   - Advanced sorting and filtering
@@ -110,17 +122,21 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
 │   └── auth/          # Authentication pages
 ├── components/          # React components
 │   ├── SpreadSheet/    # Spreadsheet components
-│   │   ├── Cell.tsx   # Cell component
-│   │   ├── Grid.tsx   # Grid layout
-│   │   └── Toolbar.tsx # Formatting tools
+│   │   ├── Cell.tsx   # Cell component with formatting
+│   │   ├── spreadsheet-grid.tsx # Grid layout with zoom
+│   │   ├── toolbar.tsx # Formatting and zoom tools
+│   │   ├── formula-bar.tsx # Formula editing
+│   │   └── keyboard-shortcuts-help.tsx # Keyboard help
 │   └── ui/            # Common UI components
 ├── context/            # React contexts
-│   └── spreadsheet/   # Spreadsheet state
+│   └── spreadsheet-context.tsx # Spreadsheet state
 ├── hooks/             # Custom React hooks
+│   └── useFormulaCalculation.ts # Formula calculation
 ├── lib/               # Utility functions
 │   ├── spreadsheet/  # Spreadsheet logic
-│   │   ├── FormulaParser.ts
-│   │   └── DependencyGraph.ts
+│   │   ├── FormulaParser.ts # Formula parsing
+│   │   ├── DependencyGraph.ts # Formula dependencies
+│   │   └── HistoryManager.ts # Undo/redo support
 │   └── supabase/    # Database integration
 └── types/            # TypeScript definitions
 ```

@@ -3,8 +3,12 @@ import { CellFormula } from "@/types/spreadsheet";
 // Regular expression to match cell references (e.g., A1, B2, etc.)
 const CELL_REF_REGEX = /[A-Z]+[0-9]+/g;
 
-// Regular expression to match SUM function with cell range - now case insensitive
+// Regular expressions for supported functions with cell ranges
 const SUM_REGEX = /sum\(([A-Z]+[0-9]+):([A-Z]+[0-9]+)\)/i;
+const AVERAGE_REGEX = /average\(([A-Z]+[0-9]+):([A-Z]+[0-9]+)\)/i;
+const MIN_REGEX = /min\(([A-Z]+[0-9]+):([A-Z]+[0-9]+)\)/i;
+const MAX_REGEX = /max\(([A-Z]+[0-9]+):([A-Z]+[0-9]+)\)/i;
+const COUNT_REGEX = /count\(([A-Z]+[0-9]+):([A-Z]+[0-9]+)\)/i;
 
 export class FormulaParser {
   // Extract cell references from a formula
@@ -14,8 +18,34 @@ export class FormulaParser {
     
     // Convert function names to uppercase for consistency in checking
     const upperFormula = formulaWithoutEquals.toUpperCase();
+    
+    // Check for functions that take range parameters
     if (upperFormula.includes('SUM')) {
       const match = formulaWithoutEquals.match(SUM_REGEX);
+      if (match) {
+        const [_, start, end] = match;
+        return this.expandCellRange(start, end);
+      }
+    } else if (upperFormula.includes('AVERAGE')) {
+      const match = formulaWithoutEquals.match(AVERAGE_REGEX);
+      if (match) {
+        const [_, start, end] = match;
+        return this.expandCellRange(start, end);
+      }
+    } else if (upperFormula.includes('MIN')) {
+      const match = formulaWithoutEquals.match(MIN_REGEX);
+      if (match) {
+        const [_, start, end] = match;
+        return this.expandCellRange(start, end);
+      }
+    } else if (upperFormula.includes('MAX')) {
+      const match = formulaWithoutEquals.match(MAX_REGEX);
+      if (match) {
+        const [_, start, end] = match;
+        return this.expandCellRange(start, end);
+      }
+    } else if (upperFormula.includes('COUNT')) {
+      const match = formulaWithoutEquals.match(COUNT_REGEX);
       if (match) {
         const [_, start, end] = match;
         return this.expandCellRange(start, end);
@@ -76,9 +106,17 @@ export class FormulaParser {
     // Remove the equals sign
     const expression = formula.substring(1);
 
-    // Check for SUM function - case insensitive
+    // Check for supported functions - case insensitive
     if (/^sum\(/i.test(expression)) {
       return SUM_REGEX.test(expression);
+    } else if (/^average\(/i.test(expression)) {
+      return AVERAGE_REGEX.test(expression);
+    } else if (/^min\(/i.test(expression)) {
+      return MIN_REGEX.test(expression);
+    } else if (/^max\(/i.test(expression)) {
+      return MAX_REGEX.test(expression);
+    } else if (/^count\(/i.test(expression)) {
+      return COUNT_REGEX.test(expression);
     }
 
     try {
@@ -124,6 +162,100 @@ export class FormulaParser {
             return sum; // Skip cells with errors or non-numeric values
           }
         }, 0);
+      };
+    }
+
+    // Handle AVERAGE function
+    const averageMatch = expression.match(AVERAGE_REGEX);
+    if (averageMatch) {
+      return (getCellValue: (cellId: string) => number) => {
+        const cells = this.expandCellRange(averageMatch[1], averageMatch[2]);
+        let sum = 0;
+        let count = 0;
+        
+        cells.forEach(cellId => {
+          try {
+            const value = getCellValue(cellId);
+            if (!isNaN(value)) {
+              sum += value;
+              count++;
+            }
+          } catch {
+            // Skip cells with errors
+          }
+        });
+        
+        return count > 0 ? sum / count : 0;
+      };
+    }
+
+    // Handle MIN function
+    const minMatch = expression.match(MIN_REGEX);
+    if (minMatch) {
+      return (getCellValue: (cellId: string) => number) => {
+        const cells = this.expandCellRange(minMatch[1], minMatch[2]);
+        let min = Infinity;
+        let hasValues = false;
+        
+        cells.forEach(cellId => {
+          try {
+            const value = getCellValue(cellId);
+            if (!isNaN(value)) {
+              min = Math.min(min, value);
+              hasValues = true;
+            }
+          } catch {
+            // Skip cells with errors
+          }
+        });
+        
+        return hasValues ? min : 0;
+      };
+    }
+
+    // Handle MAX function
+    const maxMatch = expression.match(MAX_REGEX);
+    if (maxMatch) {
+      return (getCellValue: (cellId: string) => number) => {
+        const cells = this.expandCellRange(maxMatch[1], maxMatch[2]);
+        let max = -Infinity;
+        let hasValues = false;
+        
+        cells.forEach(cellId => {
+          try {
+            const value = getCellValue(cellId);
+            if (!isNaN(value)) {
+              max = Math.max(max, value);
+              hasValues = true;
+            }
+          } catch {
+            // Skip cells with errors
+          }
+        });
+        
+        return hasValues ? max : 0;
+      };
+    }
+
+    // Handle COUNT function
+    const countMatch = expression.match(COUNT_REGEX);
+    if (countMatch) {
+      return (getCellValue: (cellId: string) => number) => {
+        const cells = this.expandCellRange(countMatch[1], countMatch[2]);
+        let count = 0;
+        
+        cells.forEach(cellId => {
+          try {
+            const value = getCellValue(cellId);
+            if (!isNaN(value)) {
+              count++;
+            }
+          } catch {
+            // Skip cells with errors
+          }
+        });
+        
+        return count;
       };
     }
 

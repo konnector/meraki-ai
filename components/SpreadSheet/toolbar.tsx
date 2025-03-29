@@ -1,7 +1,6 @@
-"use client"
-
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Slider } from "@/components/ui/slider"
 import {
   Bold,
   Italic,
@@ -9,12 +8,17 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  Type,
-  Calculator,
   Palette,
   PaintBucket,
   Undo2,
   Redo2,
+  Hash,
+  Calendar,
+  Percent,
+  DollarSign,
+  Clock,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -24,9 +28,86 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { useSpreadsheet } from "@/context/spreadsheet-context"
 import { EnhancedImportExportButtons } from "@/components/enhanced-import-export-buttons"
 import { AutoResizeColumns } from "@/components/auto-resize-columns"
+
+// Define number format types and options
+const numberFormatOptions = [
+  { 
+    id: 'general', 
+    label: 'General', 
+    icon: <Hash className="h-4 w-4 mr-2" />,
+    format: { numberFormat: 'general', type: 'number' } 
+  },
+  { 
+    id: 'number', 
+    label: 'Number', 
+    icon: <Hash className="h-4 w-4 mr-2" />,
+    format: { numberFormat: 'number', decimals: 2, type: 'number' },
+    subOptions: [
+      { id: 'number-0', label: '1234', format: { numberFormat: 'number', decimals: 0, type: 'number' } },
+      { id: 'number-1', label: '1234.5', format: { numberFormat: 'number', decimals: 1, type: 'number' } },
+      { id: 'number-2', label: '1234.56', format: { numberFormat: 'number', decimals: 2, type: 'number' } },
+      { id: 'number-3', label: '1234.567', format: { numberFormat: 'number', decimals: 3, type: 'number' } },
+    ]
+  },
+  { 
+    id: 'currency', 
+    label: 'Currency', 
+    icon: <DollarSign className="h-4 w-4 mr-2" />,
+    format: { numberFormat: 'currency', currencySymbol: '$', decimals: 2, type: 'number' },
+    subOptions: [
+      { id: 'currency-usd', label: '$ USD', format: { numberFormat: 'currency', currencySymbol: '$', decimals: 2, type: 'number' } },
+      { id: 'currency-eur', label: '€ EUR', format: { numberFormat: 'currency', currencySymbol: '€', decimals: 2, type: 'number' } },
+      { id: 'currency-gbp', label: '£ GBP', format: { numberFormat: 'currency', currencySymbol: '£', decimals: 2, type: 'number' } },
+      { id: 'currency-jpy', label: '¥ JPY', format: { numberFormat: 'currency', currencySymbol: '¥', decimals: 0, type: 'number' } },
+    ]
+  },
+  { 
+    id: 'percent', 
+    label: 'Percent', 
+    icon: <Percent className="h-4 w-4 mr-2" />,
+    format: { numberFormat: 'percent', decimals: 2, type: 'number' },
+    subOptions: [
+      { id: 'percent-0', label: '75%', format: { numberFormat: 'percent', decimals: 0, type: 'number' } },
+      { id: 'percent-1', label: '75.4%', format: { numberFormat: 'percent', decimals: 1, type: 'number' } },
+      { id: 'percent-2', label: '75.44%', format: { numberFormat: 'percent', decimals: 2, type: 'number' } },
+    ]
+  },
+  { 
+    id: 'date', 
+    label: 'Date', 
+    icon: <Calendar className="h-4 w-4 mr-2" />,
+    format: { numberFormat: 'date', dateFormat: 'MM/DD/YYYY', type: 'number' },
+    subOptions: [
+      { id: 'date-mdy', label: 'MM/DD/YYYY', format: { numberFormat: 'date', dateFormat: 'MM/DD/YYYY', type: 'number' } },
+      { id: 'date-dmy', label: 'DD/MM/YYYY', format: { numberFormat: 'date', dateFormat: 'DD/MM/YYYY', type: 'number' } },
+      { id: 'date-ymd', label: 'YYYY-MM-DD', format: { numberFormat: 'date', dateFormat: 'YYYY-MM-DD', type: 'number' } },
+      { id: 'date-md', label: 'MM/DD', format: { numberFormat: 'date', dateFormat: 'MM/DD', type: 'number' } },
+    ]
+  },
+  { 
+    id: 'time', 
+    label: 'Time', 
+    icon: <Clock className="h-4 w-4 mr-2" />,
+    format: { numberFormat: 'time', timeFormat: 'HH:MM:SS', type: 'number' },
+    subOptions: [
+      { id: 'time-hms', label: 'HH:MM:SS', format: { numberFormat: 'time', timeFormat: 'HH:MM:SS', type: 'number' } },
+      { id: 'time-hm', label: 'HH:MM', format: { numberFormat: 'time', timeFormat: 'HH:MM', type: 'number' } },
+      { id: 'time-hm-am', label: 'HH:MM AM/PM', format: { numberFormat: 'time', timeFormat: 'HH:MM AM/PM', type: 'number' } },
+    ]
+  },
+];
 
 export default function Toolbar() {
   const { 
@@ -40,25 +121,35 @@ export default function Toolbar() {
     redo,
     canUndo,
     canRedo,
+    zoomLevel,
+    setZoomLevel,
   } = useSpreadsheet()
 
-  const handleFormatChange = (format: string, value: any) => {
+  const handleFormatChange = (format: Record<string, any>) => {
     if (!activeCell) return
     
     // If there's a selection with multiple cells, apply to all selected cells
     if (selection) {
       const selectedCells = getSelectedCells()
       if (selectedCells.length > 0) {
-        updateMultipleCellsFormat(selectedCells, { [format]: value })
+        updateMultipleCellsFormat(selectedCells, format)
       } else {
         // Otherwise, just update the active cell
-        updateCellFormat(activeCell, { [format]: value })
+        updateCellFormat(activeCell, format)
       }
     } else {
       // No selection, just update the active cell
-      updateCellFormat(activeCell, { [format]: value })
+      updateCellFormat(activeCell, format)
     }
   }
+
+  // Apply a number format setting
+  const applyNumberFormat = (formatOptions: Record<string, any>) => {
+    handleFormatChange({
+      ...formatOptions,
+      type: 'number' // Ensure type is set to 'number' for proper formatting
+    });
+  };
 
   const currentCell = activeCell ? cells[activeCell] : null
 
@@ -164,7 +255,7 @@ export default function Toolbar() {
                   variant={currentCell?.format?.bold ? "secondary" : "ghost"}
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("bold", !currentCell?.format?.bold)}
+                  onClick={() => handleFormatChange({ bold: !currentCell?.format?.bold })}
                 >
                   <Bold className="h-4 w-4" />
                 </Button>
@@ -180,7 +271,7 @@ export default function Toolbar() {
                   variant={currentCell?.format?.italic ? "secondary" : "ghost"}
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("italic", !currentCell?.format?.italic)}
+                  onClick={() => handleFormatChange({ italic: !currentCell?.format?.italic })}
                 >
                   <Italic className="h-4 w-4" />
                 </Button>
@@ -196,7 +287,7 @@ export default function Toolbar() {
                   variant={currentCell?.format?.underline ? "secondary" : "ghost"}
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("underline", !currentCell?.format?.underline)}
+                  onClick={() => handleFormatChange({ underline: !currentCell?.format?.underline })}
                 >
                   <Underline className="h-4 w-4" />
                 </Button>
@@ -216,7 +307,7 @@ export default function Toolbar() {
                   variant={currentCell?.format?.align === "left" ? "secondary" : "ghost"}
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("align", "left")}
+                  onClick={() => handleFormatChange({ align: "left" })}
                 >
                   <AlignLeft className="h-4 w-4" />
                 </Button>
@@ -232,7 +323,7 @@ export default function Toolbar() {
                   variant={currentCell?.format?.align === "center" ? "secondary" : "ghost"}
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("align", "center")}
+                  onClick={() => handleFormatChange({ align: "center" })}
                 >
                   <AlignCenter className="h-4 w-4" />
                 </Button>
@@ -248,7 +339,7 @@ export default function Toolbar() {
                   variant={currentCell?.format?.align === "right" ? "secondary" : "ghost"}
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("align", "right")}
+                  onClick={() => handleFormatChange({ align: "right" })}
                 >
                   <AlignRight className="h-4 w-4" />
                 </Button>
@@ -258,6 +349,72 @@ export default function Toolbar() {
               </TooltipContent>
             </Tooltip>
           </div>
+
+          <Separator orientation="vertical" className="h-6" />
+
+          {/* Number Format Dropdown */}
+          <DropdownMenu>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-8 w-8"
+                  >
+                    <Hash className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Number Format</p>
+              </TooltipContent>
+            </Tooltip>
+            
+            <DropdownMenuContent className="w-56">
+              <DropdownMenuLabel>Number Format</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuGroup>
+                {numberFormatOptions.map((option) => (
+                  <DropdownMenuItem
+                    key={option.id}
+                    onClick={() => applyNumberFormat(option.format)}
+                    className="flex items-center"
+                  >
+                    {option.icon}
+                    <span>{option.label}</span>
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuGroup>
+              
+              {/* Sub-menus for specific formats */}
+              <DropdownMenuSeparator />
+              
+              {/* Currency Options */}
+              <DropdownMenuLabel>Currency Options</DropdownMenuLabel>
+              {numberFormatOptions.find(o => o.id === 'currency')?.subOptions?.map((subOption) => (
+                <DropdownMenuItem
+                  key={subOption.id}
+                  onClick={() => applyNumberFormat(subOption.format)}
+                >
+                  <span className="ml-6">{subOption.label}</span>
+                </DropdownMenuItem>
+              ))}
+              
+              <DropdownMenuSeparator />
+              
+              {/* Date Options */}
+              <DropdownMenuLabel>Date Options</DropdownMenuLabel>
+              {numberFormatOptions.find(o => o.id === 'date')?.subOptions?.map((subOption) => (
+                <DropdownMenuItem
+                  key={subOption.id}
+                  onClick={() => applyNumberFormat(subOption.format)}
+                >
+                  <span className="ml-6">{subOption.label}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           <Separator orientation="vertical" className="h-6" />
 
@@ -284,7 +441,7 @@ export default function Toolbar() {
                             key={color}
                             className="w-8 h-8 rounded-md border border-gray-200 flex items-center justify-center"
                             style={{ backgroundColor: color }}
-                            onClick={() => handleFormatChange("textColor", color)}
+                            onClick={() => handleFormatChange({ textColor: color })}
                           >
                             {currentCell?.format?.textColor === color && (
                               <div className="w-2 h-2 bg-white rounded-full shadow-sm" />
@@ -322,7 +479,7 @@ export default function Toolbar() {
                       <div className="grid grid-cols-5 gap-2">
                         <button
                           className="w-8 h-8 rounded-md border border-gray-200 flex items-center justify-center bg-white"
-                          onClick={() => handleFormatChange("fillColor", "transparent")}
+                          onClick={() => handleFormatChange({ fillColor: "transparent" })}
                         >
                           {(!currentCell?.format?.fillColor || currentCell?.format?.fillColor === "transparent") && (
                             <div className="w-2 h-2 bg-gray-400 rounded-full shadow-sm" />
@@ -333,7 +490,7 @@ export default function Toolbar() {
                             key={color}
                             className="w-8 h-8 rounded-md border border-gray-200 flex items-center justify-center"
                             style={{ backgroundColor: color }}
-                            onClick={() => handleFormatChange("fillColor", color)}
+                            onClick={() => handleFormatChange({ fillColor: color })}
                           >
                             {currentCell?.format?.fillColor === color && (
                               <div className="w-2 h-2 bg-white rounded-full shadow-sm" />
@@ -353,38 +510,52 @@ export default function Toolbar() {
 
           <Separator orientation="vertical" className="h-6" />
 
-          <div className="flex items-center gap-0.5">
+          {/* Zoom controls */}
+          <div className="flex items-center gap-2">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={currentCell?.format?.type === "text" ? "secondary" : "ghost"}
+                  variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("type", "text")}
+                  onClick={() => setZoomLevel(Math.max(50, zoomLevel - 10))}
+                  disabled={zoomLevel <= 50}
                 >
-                  <Type className="h-4 w-4" />
+                  <ZoomOut className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Format as text</p>
+                <p>Zoom out</p>
               </TooltipContent>
             </Tooltip>
+            
+            <Slider
+              value={[zoomLevel]}
+              min={50}
+              max={200}
+              step={10}
+              className="w-32"
+              onValueChange={(value) => setZoomLevel(value[0])}
+            />
             
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
-                  variant={currentCell?.format?.type === "number" ? "secondary" : "ghost"}
+                  variant="ghost"
                   size="icon"
                   className="h-8 w-8"
-                  onClick={() => handleFormatChange("type", "number")}
+                  onClick={() => setZoomLevel(Math.min(200, zoomLevel + 10))}
+                  disabled={zoomLevel >= 200}
                 >
-                  <Calculator className="h-4 w-4" />
+                  <ZoomIn className="h-4 w-4" />
                 </Button>
               </TooltipTrigger>
               <TooltipContent>
-                <p>Format as number</p>
+                <p>Zoom in</p>
               </TooltipContent>
             </Tooltip>
+            
+            <span className="text-sm font-medium min-w-[3rem]">{zoomLevel}%</span>
           </div>
         </div>
       </div>

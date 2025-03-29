@@ -17,6 +17,12 @@ interface CellData {
     fontSize?: string;
     textColor?: string;
     fillColor?: string;
+    type?: "text" | "number" | "formula";
+    numberFormat?: "general" | "number" | "currency" | "percent" | "date" | "time";
+    decimals?: number;
+    currencySymbol?: string;
+    dateFormat?: string;
+    timeFormat?: string;
   };
 }
 
@@ -35,6 +41,102 @@ const Cell: React.FC<CellProps> = ({
   onChange, 
   onBlur 
 }) => {
+  const formatValue = (value: string, format?: CellData['format']): string => {
+    if (!format || !format.numberFormat || format.numberFormat === "general") {
+      return value;
+    }
+
+    let numValue = parseFloat(value);
+    if (isNaN(numValue)) {
+      return value; // Return original value if not a number
+    }
+
+    const decimals = format.decimals ?? 2;
+
+    switch (format.numberFormat) {
+      case "number":
+        return numValue.toLocaleString(undefined, {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        });
+      
+      case "currency":
+        const symbol = format.currencySymbol || "$";
+        return numValue.toLocaleString(undefined, {
+          style: 'currency',
+          currency: 'USD', // Default to USD
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        }).replace('$', symbol); // Replace default $ with specified symbol
+      
+      case "percent":
+        return (numValue * 100).toLocaleString(undefined, {
+          minimumFractionDigits: decimals,
+          maximumFractionDigits: decimals
+        }) + '%';
+      
+      case "date":
+        try {
+          const date = new Date(numValue);
+          if (isNaN(date.getTime())) {
+            return value;
+          }
+          
+          // Determine date format
+          switch (format.dateFormat) {
+            case "MM/DD/YYYY":
+              return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}/${date.getFullYear()}`;
+            
+            case "DD/MM/YYYY":
+              return `${date.getDate().toString().padStart(2, '0')}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getFullYear()}`;
+            
+            case "YYYY-MM-DD":
+              return `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}-${date.getDate().toString().padStart(2, '0')}`;
+            
+            case "MM/DD":
+              return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
+            
+            default:
+              return date.toLocaleDateString();
+          }
+        } catch {
+          return value;
+        }
+      
+      case "time":
+        try {
+          const date = new Date(numValue);
+          if (isNaN(date.getTime())) {
+            return value;
+          }
+          
+          // Determine time format
+          switch (format.timeFormat) {
+            case "HH:MM:SS":
+              return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`;
+            
+            case "HH:MM":
+              return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+            
+            case "HH:MM AM/PM":
+              const hours = date.getHours();
+              const minutes = date.getMinutes();
+              const ampm = hours >= 12 ? 'PM' : 'AM';
+              const hour12 = hours % 12 || 12;
+              return `${hour12}:${minutes.toString().padStart(2, '0')} ${ampm}`;
+            
+            default:
+              return date.toLocaleTimeString();
+          }
+        } catch {
+          return value;
+        }
+      
+      default:
+        return value;
+    }
+  };
+
   const displayValue = React.useMemo(() => {
     if (isEditing) {
       return editValue;
@@ -47,14 +149,16 @@ const Cell: React.FC<CellProps> = ({
         return '#ERROR!';
       }
       
-      // Show calculated value
-      return data.calculatedValue !== undefined 
+      // Format and show calculated value
+      const rawValue = data.calculatedValue !== undefined 
         ? String(data.calculatedValue)
         : data.value || '';
+        
+      return formatValue(rawValue, data.format);
     }
     
-    // Regular cell value
-    return data?.value || '';
+    // Regular cell value with formatting
+    return formatValue(data?.value || '', data?.format);
   }, [data, isEditing, editValue]);
 
   if (isEditing) {
@@ -120,4 +224,4 @@ const Cell: React.FC<CellProps> = ({
   );
 };
 
-export default Cell; 
+export default Cell;
