@@ -18,6 +18,17 @@ type CellFormat = {
   fillColor?: string
 }
 
+type ImportOptions = {
+  clearExisting?: boolean;
+  startCell?: string;
+}
+
+type ExportOptions = {
+  includeFormatting?: boolean;
+  onlySelection?: boolean;
+  fileType?: 'csv' | 'json';
+}
+
 type Cell = {
   value: string
   formula?: string
@@ -68,6 +79,8 @@ type SpreadsheetContextType = {
   redo: () => void
   canUndo: () => boolean
   canRedo: () => boolean
+  importData: (data: string, options?: ImportOptions) => void
+  exportData: (options?: ExportOptions) => string
 }
 
 const SpreadsheetContext = createContext<SpreadsheetContextType | null>(null)
@@ -258,13 +271,32 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
     setSelection(newSelection);
   }, []);
 
-  // Update cell with formula support
+  // Helper function to determine the dependency depth of a cell
+  const dependencyDepth = (cellId: string, cells: Cells): number => {
+    if (!cells[cellId]?.formula) return 0;
+    
+    const formula = FormulaParser.parseFormula(cells[cellId].formula!);
+    if (!formula || formula.dependencies.length === 0) return 1;
+    
+    let maxDepth = 0;
+    formula.dependencies.forEach(depId => {
+      // Avoid circular dependencies
+      if (depId !== cellId) {
+        const depth = dependencyDepth(depId, cells) + 1;
+        maxDepth = Math.max(maxDepth, depth);
+      }
+    });
+    
+    return maxDepth;
+  };
+
+  // Update cell with formula support (modified version)
   const updateCell = useCallback((cellId: string, value: string) => {
     // Set active cell when updating
     setActiveCell(cellId);
     
     setCells(prev => {
-      const newCells = { ...prev }
+      const newCells = { ...prev };
       const oldValue = prev[cellId]?.value;
       
       // Only proceed if the value is actually different
@@ -276,24 +308,34 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
       if (value.startsWith('=')) {
         try {
           // Parse the formula
-          const formula = FormulaParser.parseFormula(value)
+          const formula = FormulaParser.parseFormula(value);
           if (!formula) {
-            throw new Error('Invalid formula')
+            throw new Error('Invalid formula');
           }
 
           // Update dependencies
-          updateDependencies(cellId, formula)
+          updateDependencies(cellId, formula);
 
-          // Calculate the formula value
-          const getCellValue = (depCellId: string) => {
-            const numValue = Number(newCells[depCellId]?.value || '0')
-            if (isNaN(numValue)) {
-              throw new Error(`Invalid number in cell ${depCellId}`)
+          // Define a more robust getCellValue function
+          const getCellValue = (depCellId: string): number => {
+            // First check if this is a formula cell with a calculated value
+            if (newCells[depCellId]?.formula && newCells[depCellId]?.calculatedValue !== undefined) {
+              const numValue = Number(newCells[depCellId]?.calculatedValue);
+              if (!isNaN(numValue)) {
+                return numValue;
+              }
             }
-            return numValue
-          }
+            
+            // Then try the cell's regular value
+            const numValue = Number(newCells[depCellId]?.value || '0');
+            if (isNaN(numValue)) {
+              console.warn(`Invalid number in cell ${depCellId}`);
+              return 0; // Return 0 instead of throwing to be more forgiving
+            }
+            return numValue;
+          };
 
-          const { value: calculatedValue, error } = calculateFormula(formula, getCellValue)
+          const { value: calculatedValue, error } = calculateFormula(formula, getCellValue);
 
           newCells[cellId] = {
             ...newCells[cellId],
@@ -301,34 +343,42 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
             formula: value,
             calculatedValue,
             error
-          }
+          };
 
           // Recalculate dependent cells
-          const affectedCells = getAffectedCells(cellId)
-          affectedCells.forEach(affectedCellId => {
-            if (affectedCellId === cellId) return // Skip the current cell
+          const affectedCells = getAffectedCells(cellId);
+          
+          // Sort affected cells to ensure they're calculated in the right order
+          const processingOrder = [...affectedCells].sort((a, b) => {
+            const aDepth = dependencyDepth(a, newCells);
+            const bDepth = dependencyDepth(b, newCells);
+            return aDepth - bDepth;
+          });
+          
+          processingOrder.forEach(affectedCellId => {
+            if (affectedCellId === cellId) return; // Skip the current cell
             
-            const affectedCell = newCells[affectedCellId]
-            if (!affectedCell?.formula) return // Skip non-formula cells
+            const affectedCell = newCells[affectedCellId];
+            if (!affectedCell?.formula) return; // Skip non-formula cells
 
-            const affectedFormula = FormulaParser.parseFormula(affectedCell.formula)
-            if (!affectedFormula) return
+            const affectedFormula = FormulaParser.parseFormula(affectedCell.formula);
+            if (!affectedFormula) return;
 
             try {
-              const { value: newValue, error } = calculateFormula(affectedFormula, getCellValue)
+              const { value: newValue, error } = calculateFormula(affectedFormula, getCellValue);
               newCells[affectedCellId] = {
                 ...affectedCell,
                 calculatedValue: newValue,
                 error
-              }
+              };
             } catch (err) {
               newCells[affectedCellId] = {
                 ...affectedCell,
                 calculatedValue: '#ERROR!',
                 error: err instanceof Error ? err.message : 'Calculation error'
-              }
+              };
             }
-          })
+          });
 
           // Save to history after the update
           setTimeout(() => saveToHistory(), 0);
@@ -340,7 +390,7 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
             formula: value,
             calculatedValue: '#ERROR!',
             error: err instanceof Error ? err.message : 'Formula error'
-          }
+          };
           
           // Save to history after the update
           setTimeout(() => saveToHistory(), 0);
@@ -354,46 +404,64 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
           formula: undefined,
           calculatedValue: undefined,
           error: undefined
-        }
+        };
 
         // Recalculate dependent cells since this cell's value changed
-        const affectedCells = getAffectedCells(cellId)
-        affectedCells.forEach(affectedCellId => {
-          const affectedCell = newCells[affectedCellId]
-          if (!affectedCell?.formula) return
+        const affectedCells = getAffectedCells(cellId);
+        
+        // Sort affected cells to ensure they're calculated in the right order
+        const processingOrder = [...affectedCells].sort((a, b) => {
+          const aDepth = dependencyDepth(a, newCells);
+          const bDepth = dependencyDepth(b, newCells);
+          return aDepth - bDepth;
+        });
+        
+        processingOrder.forEach(affectedCellId => {
+          const affectedCell = newCells[affectedCellId];
+          if (!affectedCell?.formula) return;
 
-          const affectedFormula = FormulaParser.parseFormula(affectedCell.formula)
-          if (!affectedFormula) return
+          const affectedFormula = FormulaParser.parseFormula(affectedCell.formula);
+          if (!affectedFormula) return;
 
           try {
-            const getCellValue = (depCellId: string) => {
-              const numValue = Number(newCells[depCellId]?.value || '0')
-              if (isNaN(numValue)) {
-                throw new Error(`Invalid number in cell ${depCellId}`)
+            const getCellValue = (depCellId: string): number => {
+              // First check if this is a formula cell with a calculated value
+              if (newCells[depCellId]?.formula && newCells[depCellId]?.calculatedValue !== undefined) {
+                const numValue = Number(newCells[depCellId]?.calculatedValue);
+                if (!isNaN(numValue)) {
+                  return numValue;
+                }
               }
-              return numValue
-            }
+              
+              // Then try the cell's regular value
+              const numValue = Number(newCells[depCellId]?.value || '0');
+              if (isNaN(numValue)) {
+                console.warn(`Invalid number in cell ${depCellId}`);
+                return 0; // Return 0 instead of throwing to be more forgiving
+              }
+              return numValue;
+            };
 
-            const { value: newValue, error } = calculateFormula(affectedFormula, getCellValue)
+            const { value: newValue, error } = calculateFormula(affectedFormula, getCellValue);
             newCells[affectedCellId] = {
               ...affectedCell,
               calculatedValue: newValue,
               error
-            }
+            };
           } catch (err) {
             newCells[affectedCellId] = {
               ...affectedCell,
               calculatedValue: '#ERROR!',
               error: err instanceof Error ? err.message : 'Calculation error'
-            }
+            };
           }
-        })
+        });
 
         // Save to history after the update
         setTimeout(() => saveToHistory(), 0);
         return newCells;
       }
-    })
+    });
   }, [saveToHistory, updateDependencies, calculateFormula, getAffectedCells, setActiveCell]);
 
   const updateCellFormat = useCallback((cellId: string, format: Partial<CellFormat>) => {
@@ -646,6 +714,222 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
     console.log('Deleted selection:', selectedCells);
   }, [selection, getSelectedCells, saveToHistory]);
 
+  const importData = useCallback((data: string, options: ImportOptions = {}) => {
+    const { clearExisting = false, startCell = 'A1' } = options;
+    
+    // If clearExisting is true, clear all cells first
+    if (clearExisting) {
+      setCells({});
+    }
+    
+    // Parse CSV content
+    const lines = data.split('\n');
+    if (lines.length === 0) return;
+    
+    // Get starting position
+    const startPos = getCellPosition(startCell);
+    
+    // Save current state to history before import
+    historyManager.current.push({
+      cells,
+      activeCell,
+      selection
+    });
+    
+    setCells(prev => {
+      const newCells = { ...prev };
+      
+      // Process each line
+      lines.forEach((line, lineIndex) => {
+        if (!line.trim()) return; // Skip empty lines
+        
+        const rowIndex = startPos.row + lineIndex;
+        let values: string[] = [];
+        
+        // Handle basic CSV parsing - this is a simple implementation
+        // For more complex CSVs with quoted fields, consider using a CSV parser library
+        if (line.includes('"')) {
+          // There are quoted fields, need more careful parsing
+          let inQuotes = false;
+          let currentValue = '';
+          let colValues: string[] = [];
+          
+          for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            
+            if (char === '"') {
+              // Toggle quote state
+              inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+              // End of field
+              colValues.push(currentValue);
+              currentValue = '';
+            } else {
+              currentValue += char;
+            }
+          }
+          
+          // Add the last value
+          colValues.push(currentValue);
+          values = colValues;
+        } else {
+          // Simple case - no quotes
+          values = line.split(',');
+        }
+        
+        // Update cells for each value in the row
+        values.forEach((value, colIndex) => {
+          const col = startPos.col + colIndex;
+          const cellId = getCellId({ row: rowIndex, col });
+          
+          // Clean the value (remove quotes if present)
+          let cleanValue = value.trim();
+          if (cleanValue.startsWith('"') && cleanValue.endsWith('"')) {
+            cleanValue = cleanValue.substring(1, cleanValue.length - 1).replace(/""/g, '"');
+          }
+          
+          // Update the cell
+          newCells[cellId] = {
+            ...newCells[cellId],
+            value: cleanValue,
+            // If it's a formula, we need to handle it
+            ...(cleanValue.startsWith('=') && {
+              formula: cleanValue
+            })
+          };
+        });
+      });
+      
+      return newCells;
+    });
+    
+    // After import, recalculate all formulas
+    setTimeout(() => {
+      // Recalculate all formulas
+      setCells(prev => {
+        const newCells = { ...prev };
+        
+        // Find all formula cells
+        Object.entries(newCells).forEach(([cellId, cell]) => {
+          if (cell.formula && cell.formula.startsWith('=')) {
+            try {
+              const formula = FormulaParser.parseFormula(cell.formula);
+              if (!formula) return;
+              
+              // Update dependencies
+              updateDependencies(cellId, formula);
+              
+              // Calculate formula
+              const getCellValue = (depCellId: string) => {
+                const numValue = Number(newCells[depCellId]?.value || '0');
+                if (isNaN(numValue)) {
+                  throw new Error(`Invalid number in cell ${depCellId}`);
+                }
+                return numValue;
+              };
+              
+              const { value: calculatedValue, error } = calculateFormula(formula, getCellValue);
+              
+              newCells[cellId] = {
+                ...newCells[cellId],
+                calculatedValue,
+                error
+              };
+            } catch (err) {
+              newCells[cellId] = {
+                ...newCells[cellId],
+                calculatedValue: '#ERROR!',
+                error: err instanceof Error ? err.message : 'Formula error'
+              };
+            }
+          }
+        });
+        
+        return newCells;
+      });
+    }, 0);
+  }, [cells, getCellPosition, getCellId, updateDependencies, calculateFormula]);
+
+  const exportData = useCallback((options: ExportOptions = {}) => {
+    const { includeFormatting = false, onlySelection = false, fileType = 'csv' } = options;
+    
+    // Determine which cells to export
+    let cellsToExport: string[] = [];
+    
+    if (onlySelection && selection) {
+      cellsToExport = getSelectedCells();
+    } else {
+      cellsToExport = Object.keys(cells);
+    }
+    
+    if (cellsToExport.length === 0) {
+      return '';
+    }
+    
+    // Find the dimensions of the data to export
+    let minRow = Infinity;
+    let maxRow = 0;
+    let minCol = Infinity;
+    let maxCol = 0;
+    
+    cellsToExport.forEach(cellId => {
+      const pos = getCellPosition(cellId);
+      minRow = Math.min(minRow, pos.row);
+      maxRow = Math.max(maxRow, pos.row);
+      minCol = Math.min(minCol, pos.col);
+      maxCol = Math.max(maxCol, pos.col);
+    });
+    
+    // Export as CSV
+    if (fileType === 'csv') {
+      let csvContent = '';
+      
+      for (let row = minRow; row <= maxRow; row++) {
+        const rowValues = [];
+        
+        for (let col = minCol; col <= maxCol; col++) {
+          const cellId = getCellId({ row, col });
+          let value = '';
+          
+          // Get the appropriate value
+          if (cells[cellId]) {
+            value = isCellFormula(cellId)
+              ? (includeFormatting ? cells[cellId].formula || '' : getCellDisplayValue(cellId))
+              : cells[cellId].value || '';
+          }
+          
+          // Escape values with commas, quotes, or newlines
+          if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+            value = `"${value.replace(/"/g, '""')}"`;
+          }
+          
+          rowValues.push(value);
+        }
+        
+        csvContent += rowValues.join(',') + '\n';
+      }
+      
+      return csvContent;
+    }
+    
+    // Export as JSON
+    if (fileType === 'json') {
+      const jsonData: Record<string, any> = {};
+      
+      cellsToExport.forEach(cellId => {
+        if (cells[cellId]) {
+          jsonData[cellId] = includeFormatting
+            ? { ...cells[cellId] }
+            : { value: isCellFormula(cellId) ? getCellDisplayValue(cellId) : cells[cellId].value };
+        }
+      });
+      
+      return JSON.stringify(jsonData, null, 2);
+    }
+    
+    return '';
+  }, [cells, selection, getSelectedCells, getCellPosition, getCellId, isCellFormula, getCellDisplayValue]);
+
   // Update the context value to include all functions
   const value = {
     cells,
@@ -675,6 +959,8 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
     redo,
     canUndo: () => historyManager.current.canUndo(),
     canRedo: () => historyManager.current.canRedo(),
+    importData,
+    exportData,
   };
 
   return (

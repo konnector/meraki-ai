@@ -9,16 +9,21 @@ const SUM_REGEX = /sum\(([A-Z]+[0-9]+):([A-Z]+[0-9]+)\)/i;
 export class FormulaParser {
   // Extract cell references from a formula
   static extractDependencies(formula: string): string[] {
+    // Remove the equals sign if present
+    const formulaWithoutEquals = formula.startsWith('=') ? formula.substring(1) : formula;
+    
     // Convert function names to uppercase for consistency in checking
-    const upperFormula = formula.toUpperCase();
+    const upperFormula = formulaWithoutEquals.toUpperCase();
     if (upperFormula.includes('SUM')) {
-      const match = formula.match(SUM_REGEX);
+      const match = formulaWithoutEquals.match(SUM_REGEX);
       if (match) {
         const [_, start, end] = match;
         return this.expandCellRange(start, end);
       }
     }
-    const matches = formula.match(CELL_REF_REGEX) || [];
+    
+    // Extract all cell references from the formula
+    const matches = formulaWithoutEquals.match(CELL_REF_REGEX) || [];
     return [...new Set(matches)]; // Remove duplicates
   }
 
@@ -29,19 +34,37 @@ export class FormulaParser {
     const endCol = end.match(/[A-Z]+/)?.[0] || '';
     const endRow = parseInt(end.match(/\d+/)?.[0] || '0');
 
-    const startColNum = startCol.split('').reduce((acc, char) => 
-      acc * 26 + char.charCodeAt(0) - 'A'.charCodeAt(0), 0);
-    const endColNum = endCol.split('').reduce((acc, char) => 
-      acc * 26 + char.charCodeAt(0) - 'A'.charCodeAt(0), 0);
+    const startColNum = this.columnToNumber(startCol);
+    const endColNum = this.columnToNumber(endCol);
 
     const cells: string[] = [];
     for (let col = startColNum; col <= endColNum; col++) {
       for (let row = startRow; row <= endRow; row++) {
-        const colLetter = String.fromCharCode('A'.charCodeAt(0) + col);
+        const colLetter = this.numberToColumn(col);
         cells.push(`${colLetter}${row}`);
       }
     }
     return cells;
+  }
+  
+  // Convert column letter to number (A -> 0, B -> 1, ..., Z -> 25, AA -> 26, etc.)
+  private static columnToNumber(column: string): number {
+    return column.split('').reduce((acc, char) => 
+      acc * 26 + char.charCodeAt(0) - 'A'.charCodeAt(0) + 1, 0) - 1;
+  }
+  
+  // Convert number to column letter (0 -> A, 1 -> B, ..., 25 -> Z, 26 -> AA, etc.)
+  private static numberToColumn(num: number): string {
+    let column = '';
+    let n = num + 1;
+    
+    while (n > 0) {
+      const remainder = (n - 1) % 26;
+      column = String.fromCharCode(65 + remainder) + column;
+      n = Math.floor((n - 1) / 26);
+    }
+    
+    return column;
   }
 
   // Validate formula syntax
@@ -95,7 +118,8 @@ export class FormulaParser {
         const cells = this.expandCellRange(sumMatch[1], sumMatch[2]);
         return cells.reduce((sum, cellId) => {
           try {
-            return sum + getCellValue(cellId);
+            const value = getCellValue(cellId);
+            return sum + (isNaN(value) ? 0 : value);
           } catch {
             return sum; // Skip cells with errors or non-numeric values
           }
@@ -110,9 +134,17 @@ export class FormulaParser {
 
     try {
       // Create a function that takes a getCellValue parameter
-      return new Function('getCellValue', `return ${safeExpression}`) as any;
+      return new Function('getCellValue', `
+        try {
+          return ${safeExpression};
+        } catch (error) {
+          console.error("Error evaluating formula:", error);
+          throw error;
+        }
+      `) as any;
     } catch (error) {
+      console.error("Error creating evaluation function:", error);
       throw new Error(`Invalid formula: ${formula.raw}`);
     }
   }
-} 
+}

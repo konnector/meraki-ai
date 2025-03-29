@@ -39,6 +39,20 @@ export default function SpreadsheetGrid() {
   const [isSelecting, setIsSelecting] = useState(false)
   const [selectionStart, setSelectionStart] = useState<{ row: number; col: number } | null>(null)
   const [mouseDownStartPos, setMouseDownStartPos] = useState<{ x: number; y: number } | null>(null)
+  
+  // Column resizing state
+  const [columnWidths, setColumnWidths] = useState<number[]>(Array(26).fill(100))
+  const [isResizingColumn, setIsResizingColumn] = useState(false)
+  const [resizingColumn, setResizingColumn] = useState<number | null>(null)
+  const [startX, setStartX] = useState<number>(0)
+  const [startColumnWidth, setStartColumnWidth] = useState<number>(0)
+  
+  // Row resizing state
+  const [rowHeights, setRowHeights] = useState<number[]>(Array(100).fill(32)) // Default row height of 32px (h-8)
+  const [isResizingRow, setIsResizingRow] = useState(false)
+  const [resizingRow, setResizingRow] = useState<number | null>(null)
+  const [startY, setStartY] = useState<number>(0)
+  const [startRowHeight, setStartRowHeight] = useState<number>(0)
 
   // Generate column headers (A-Z)
   const columnHeaders = Array.from({ length: 26 }, (_, i) => String.fromCharCode(65 + i))
@@ -46,10 +60,83 @@ export default function SpreadsheetGrid() {
   // Generate row headers (1-100)
   const rowHeaders = Array.from({ length: 100 }, (_, i) => i + 1)
 
+  // Handle column resize
+  const handleColumnResizeStart = (e: MouseEvent, columnIndex: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizingColumn(true)
+    setResizingColumn(columnIndex)
+    setStartX(e.clientX)
+    setStartColumnWidth(columnWidths[columnIndex])
+  }
+
+  const handleColumnResizeMove = (e: MouseEvent) => {
+    if (!isResizingColumn || resizingColumn === null) return
+
+    const diff = e.clientX - startX
+    const newWidth = Math.max(50, startColumnWidth + diff) // Minimum width of 50px
+    const newColumnWidths = [...columnWidths]
+    newColumnWidths[resizingColumn] = newWidth
+    setColumnWidths(newColumnWidths)
+  }
+
+  const handleColumnResizeEnd = () => {
+    setIsResizingColumn(false)
+    setResizingColumn(null)
+  }
+
+  // Handle row resize
+  const handleRowResizeStart = (e: MouseEvent, rowIndex: number) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsResizingRow(true)
+    setResizingRow(rowIndex)
+    setStartY(e.clientY)
+    setStartRowHeight(rowHeights[rowIndex])
+  }
+
+  const handleRowResizeMove = (e: MouseEvent) => {
+    if (!isResizingRow || resizingRow === null) return
+
+    const diff = e.clientY - startY
+    const newHeight = Math.max(24, startRowHeight + diff) // Minimum height of 24px
+    const newRowHeights = [...rowHeights]
+    newRowHeights[resizingRow] = newHeight
+    setRowHeights(newRowHeights)
+  }
+
+  const handleRowResizeEnd = () => {
+    setIsResizingRow(false)
+    setResizingRow(null)
+  }
+
+  // Setup resize event listeners
+  useEffect(() => {
+    if (isResizingColumn) {
+      window.addEventListener('mousemove', handleColumnResizeMove as any)
+      window.addEventListener('mouseup', handleColumnResizeEnd)
+      return () => {
+        window.removeEventListener('mousemove', handleColumnResizeMove as any)
+        window.removeEventListener('mouseup', handleColumnResizeEnd)
+      }
+    }
+  }, [isResizingColumn])
+
+  useEffect(() => {
+    if (isResizingRow) {
+      window.addEventListener('mousemove', handleRowResizeMove as any)
+      window.addEventListener('mouseup', handleRowResizeEnd)
+      return () => {
+        window.removeEventListener('mousemove', handleRowResizeMove as any)
+        window.removeEventListener('mouseup', handleRowResizeEnd)
+      }
+    }
+  }, [isResizingRow])
+
   // Prevent default browser text selection behavior
   useEffect(() => {
     const preventDefaultSelection = (e: MouseEvent) => {
-      if (isSelecting) {
+      if (isSelecting || isResizingColumn || isResizingRow) {
         e.preventDefault()
       }
     }
@@ -59,7 +146,7 @@ export default function SpreadsheetGrid() {
     return () => {
       document.removeEventListener('selectstart', preventDefaultSelection as any)
     }
-  }, [isSelecting])
+  }, [isSelecting, isResizingColumn, isResizingRow])
 
   // Handle keyboard shortcuts
   useEffect(() => {
@@ -119,6 +206,24 @@ export default function SpreadsheetGrid() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isEditing, undo, redo, copySelection, cutSelection, pasteSelection, deleteSelection, setSelection]);
+
+  // Add event listener for column auto-resize
+  useEffect(() => {
+    // Event listener for column auto-resize
+    const handleAutoResize = (event: CustomEvent<{ columnWidths: number[] }>) => {
+      if (event.detail && event.detail.columnWidths) {
+        setColumnWidths(event.detail.columnWidths);
+      }
+    };
+
+    // Add event listener
+    window.addEventListener('resize-columns', handleAutoResize as any);
+    
+    // Remove event listener on cleanup
+    return () => {
+      window.removeEventListener('resize-columns', handleAutoResize as any);
+    };
+  }, []);
 
   // Handle column header click - select entire column
   const handleColumnHeaderClick = (colIndex: number, e: MouseEvent) => {
@@ -448,42 +553,67 @@ export default function SpreadsheetGrid() {
       onKeyDown={handleCellKeyDown} 
       onKeyPress={handleKeyPress}
       ref={gridRef}
-      style={isSelecting ? preventSelectionStyle : undefined}
+      style={isSelecting || isResizingColumn || isResizingRow ? preventSelectionStyle : undefined}
     >
       <div className="inline-block min-w-full">
-        <div className="grid grid-cols-[40px_repeat(26,100px)] sticky top-0 z-10">
+        <div className="grid sticky top-0 z-10" style={{ gridTemplateColumns: `40px ${columnWidths.map(w => `${w}px`).join(' ')}` }}>
           {/* Empty corner cell */}
           <div className="h-10 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center" style={preventSelectionStyle}></div>
 
           {/* Column headers */}
           {columnHeaders.map((header, colIndex) => (
-            <div
-              key={header}
-              className={cn(
-                "h-10 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors",
-                isEntireColumnSelected(colIndex) && "bg-blue-100"
-              )}
-              style={preventSelectionStyle}
-              onClick={(e) => handleColumnHeaderClick(colIndex, e)}
-            >
-              {header}
+            <div key={header} className="relative">
+              <div
+                className={cn(
+                  "h-10 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors",
+                  isEntireColumnSelected(colIndex) && "bg-gray-200"
+                )}
+                style={preventSelectionStyle}
+                onClick={(e) => handleColumnHeaderClick(colIndex, e)}
+              >
+                {header}
+              </div>
+              {/* Column resize handle */}
+              <div
+                className={cn(
+                  "absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-gray-600 group",
+                  isResizingColumn && resizingColumn === colIndex && "bg-gray-800"
+                )}
+                onMouseDown={(e) => handleColumnResizeStart(e, colIndex)}
+              >
+                <div className="absolute inset-y-0 right-0 w-4 -mr-2" />
+              </div>
             </div>
           ))}
         </div>
 
         {/* Grid rows */}
         {rowHeaders.map((rowNum, rowIndex) => (
-          <div key={rowNum} className="grid grid-cols-[40px_repeat(26,100px)]">
+          <div key={rowNum} className="grid relative" style={{ gridTemplateColumns: `40px ${columnWidths.map(w => `${w}px`).join(' ')}` }}>
             {/* Row header */}
             <div 
               className={cn(
-                "h-8 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 sticky left-0 z-10 cursor-pointer hover:bg-gray-200 transition-colors",
-                isEntireRowSelected(rowIndex) && "bg-blue-100"
+                "bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 sticky left-0 z-10 cursor-pointer hover:bg-gray-200 transition-colors relative",
+                isEntireRowSelected(rowIndex) && "bg-gray-200"
               )}
-              style={preventSelectionStyle}
+              style={{
+                ...preventSelectionStyle,
+                height: `${rowHeights[rowIndex]}px`,
+              }}
               onClick={(e) => handleRowHeaderClick(rowIndex, e)}
             >
               {rowNum}
+              
+              {/* Row resize handle */}
+              <div
+                className={cn(
+                  "absolute bottom-0 left-0 h-1 w-full cursor-row-resize hover:bg-gray-600",
+                  isResizingRow && resizingRow === rowIndex && "bg-gray-800"
+                )}
+                onMouseDown={(e) => handleRowResizeStart(e, rowIndex)}
+              >
+                <div className="absolute inset-x-0 bottom-0 h-4 -mb-2" />
+              </div>
             </div>
 
             {/* Row cells */}
@@ -496,16 +626,19 @@ export default function SpreadsheetGrid() {
                 <div
                   key={`${rowIndex}-${colIndex}`}
                   className={cn(
-                    "h-8 border-b border-r border-gray-200 relative",
-                    isActive && "outline outline-2 outline-blue-500 z-20",
-                    isSelected && !isActive && "bg-blue-50/70",
-                    isActive && isSelected && "bg-blue-100",
+                    "border-b border-r border-gray-200 relative",
+                    isActive && "outline outline-2 outline-gray-800 z-20",
+                    isSelected && !isActive && "bg-gray-100/70",
+                    isActive && isSelected && "bg-gray-200",
                   )}
+                  style={{
+                    height: `${rowHeights[rowIndex]}px`,
+                    ...((!isEditing) ? preventSelectionStyle : undefined),
+                  }}
                   onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
                   onMouseMove={(e) => handleCellMouseMove(rowIndex, colIndex, e)}
                   onMouseUp={handleCellMouseUp}
                   onDoubleClick={() => handleCellDoubleClick(rowIndex, colIndex)}
-                  style={!isEditing ? preventSelectionStyle : undefined}
                 >
                   {isActive && isEditing ? (
                     <input
@@ -571,10 +704,11 @@ export default function SpreadsheetGrid() {
                 </div>
               )
             })}
+
+
           </div>
         ))}
       </div>
     </div>
   )
 }
-

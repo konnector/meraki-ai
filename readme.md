@@ -37,15 +37,18 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
   - Star/unstar functionality
   - Basic cell operations
   - Undo/redo support
-  - Copy/paste functionality
+  - Copy/paste functionality with formula adjustments
+  - Cell range selection
+  - Column/row selection
+  - Keyboard navigation
 
 - **Cell Formatting**
   - Bold, italic, underline
-  - Text alignment
+  - Text alignment (left, center, right)
   - Font family selection
   - Font size options
   - Text and background colors
-  - Custom cell types
+  - Custom cell types (text, number)
 
 - **Formula Support**
   - Basic arithmetic operations
@@ -54,13 +57,14 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
   - Error handling and display
   - Formula bar with editing
   - Cell reference validation
+  - Formula reference adjustment during copy/paste
 
 ### Advanced Features (🟨 In Progress)
 - **Enhanced Formula System**
   - Additional functions (AVG, COUNT, etc.)
-  - Improved formula reference handling
   - Multi-sheet references
   - Custom function support
+  - Improved formula reference handling
 
 - **Data Validation**
   - Input validation rules
@@ -88,6 +92,14 @@ Meraki.ai is a modern web application built with Next.js 15, TypeScript, and a c
   - Pattern recognition
   - Natural language queries
   - Smart formatting
+
+- **Enhanced Grid Features**
+  - Cell merging
+  - Auto-fill
+  - Custom cell validation
+  - Advanced sorting and filtering
+  - Cell protection
+  - Custom cell renderers
 
 ## Project Structure
 ```

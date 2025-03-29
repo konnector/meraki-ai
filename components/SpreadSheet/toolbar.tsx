@@ -25,6 +25,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { useSpreadsheet } from "@/context/spreadsheet-context"
+import { EnhancedImportExportButtons } from "@/components/enhanced-import-export-buttons"
+import { AutoResizeColumns } from "@/components/auto-resize-columns"
 
 export default function Toolbar() {
   const { 
@@ -142,6 +144,16 @@ export default function Toolbar() {
           </TooltipContent>
         </Tooltip>
 
+        <Separator orientation="vertical" className="mx-1" />
+        
+        {/* Add Enhanced Import/Export buttons */}
+        <EnhancedImportExportButtons />
+        
+        <Separator orientation="vertical" className="mx-1" />
+
+        {/* Add AutoResizeColumns button */}
+        <AutoResizeColumns />
+        
         <Separator orientation="vertical" className="mx-1" />
 
         <div className="flex items-center gap-2 px-4 py-1 border-b border-gray-200 overflow-x-auto">
@@ -379,4 +391,3 @@ export default function Toolbar() {
     </TooltipProvider>
   )
 }
-

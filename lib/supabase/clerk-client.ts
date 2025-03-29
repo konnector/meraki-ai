@@ -1,15 +1,19 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { useSession } from '@clerk/nextjs';
-import { useMemo, useRef, useEffect, useState } from 'react';
+import { useMemo, useEffect, useState, useRef } from 'react';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Singleton instance for the Supabase client
-let globalClient: SupabaseClient | null = null;
-let globalToken: string | null = null;
+// Singleton state
+const globalState = {
+  client: null as SupabaseClient | null,
+  token: null as string | null,
+  initializationPromise: null as Promise<SupabaseClient> | null,
+  lastActivity: Date.now()
+};
 
-// Increase token expiry buffer to reduce token refreshes (15 minutes)
+// Token expiry buffer (15 minutes)
 const TOKEN_EXPIRY_BUFFER = 15 * 60 * 1000;
 
 // Local storage key for caching
@@ -21,16 +25,17 @@ interface TokenData {
 }
 
 // Initialize token cache from localStorage if available
-let tokenCache: Map<string, TokenData>;
-try {
-  const cached = localStorage.getItem(TOKEN_CACHE_KEY);
-  tokenCache = new Map(cached ? JSON.parse(cached) : []);
-} catch {
-  tokenCache = new Map();
-}
+const getTokenCache = (): Map<string, TokenData> => {
+  try {
+    const cached = localStorage.getItem(TOKEN_CACHE_KEY);
+    return new Map(cached ? JSON.parse(cached) : []);
+  } catch {
+    return new Map();
+  }
+};
 
 // Save token cache to localStorage
-const persistTokenCache = () => {
+const persistTokenCache = (tokenCache: Map<string, TokenData>) => {
   try {
     localStorage.setItem(TOKEN_CACHE_KEY, JSON.stringify(Array.from(tokenCache.entries())));
   } catch (e) {
@@ -38,32 +43,74 @@ const persistTokenCache = () => {
   }
 };
 
+// Function to check if token is expired or about to expire
+const isTokenExpired = (tokenData: TokenData) => {
+  return Date.now() + TOKEN_EXPIRY_BUFFER >= tokenData.expiresAt;
+};
+
+// Function to decode JWT and get expiration
+const getTokenExpiration = (token: string): number => {
+  try {
+    const [, payload] = token.split('.');
+    const decoded = JSON.parse(atob(payload));
+    return decoded.exp * 1000; // Convert to milliseconds
+  } catch {
+    return Date.now() + 3600 * 1000; // Default to 1 hour if can't decode
+  }
+};
+
+// Create a new Supabase client instance
+const createSupabaseClient = (supabaseToken: string): SupabaseClient => {
+  // If we already have a client, just update its headers
+  if (globalState.client) {
+    // Update auth headers safely
+    globalState.client.auth.setSession({ access_token: supabaseToken, refresh_token: '' });
+    return globalState.client;
+  }
+
+  // Create new client only if one doesn't exist
+  const client = createClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${supabaseToken}`
+      }
+    },
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: false,
+      storageKey: `sb-${supabaseUrl}-auth-token` // Consistent storage key
+    }
+  });
+
+  return client;
+};
+
 // Hook to get authenticated Supabase client with Clerk
 export function useSupabaseClient() {
   const { session, isLoaded, isSignedIn } = useSession();
-  const clientRef = useRef<SupabaseClient | null>(null);
-  const tokenRef = useRef<string | null>(null);
   const [isInitialized, setIsInitialized] = useState(false);
+  const tokenCache = useMemo(() => getTokenCache(), []);
+  const initializationRef = useRef(false);
 
-  // Function to check if token is expired or about to expire
-  const isTokenExpired = (tokenData: TokenData) => {
-    return Date.now() + TOKEN_EXPIRY_BUFFER >= tokenData.expiresAt;
-  };
+  // Handle visibility change
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        globalState.lastActivity = Date.now();
+      }
+    };
 
-  // Function to decode JWT and get expiration
-  const getTokenExpiration = (token: string): number => {
-    try {
-      const [, payload] = token.split('.');
-      const decoded = JSON.parse(atob(payload));
-      return decoded.exp * 1000; // Convert to milliseconds
-    } catch {
-      return Date.now() + 3600 * 1000; // Default to 1 hour if can't decode
-    }
-  };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   // Initialize client on mount
   useEffect(() => {
-    if (!isInitialized && isLoaded && isSignedIn && session) {
+    if (!isInitialized && isLoaded && isSignedIn && session && !initializationRef.current) {
+      initializationRef.current = true;
       getClient().then(() => setIsInitialized(true));
     }
   }, [isLoaded, isSignedIn, session, isInitialized]);
@@ -72,10 +119,10 @@ export function useSupabaseClient() {
   const getClient = useMemo(() => {
     return async () => {
       // Use cached client if available and token is still valid
-      if (globalClient && globalToken && tokenCache.has(globalToken)) {
-        const cachedData = tokenCache.get(globalToken)!;
+      if (globalState.client && globalState.token && tokenCache.has(globalState.token)) {
+        const cachedData = tokenCache.get(globalState.token)!;
         if (!isTokenExpired(cachedData)) {
-          return globalClient;
+          return globalState.client;
         }
       }
 
@@ -84,69 +131,47 @@ export function useSupabaseClient() {
         throw new Error('No active session');
       }
 
-      try {
-        // Check if we have a cached token that's still valid
-        const currentToken = tokenRef.current;
-        if (currentToken && tokenCache.has(currentToken)) {
-          const cachedData = tokenCache.get(currentToken)!;
-          if (!isTokenExpired(cachedData)) {
-            return clientRef.current!;
-          }
-        }
-
-        // Get new token only if needed
-        const supabaseToken = await session.getToken({ template: 'supabase' });
-        if (!supabaseToken) {
-          throw new Error('Failed to get Supabase token');
-        }
-
-        // If token hasn't changed and is still valid, return existing client
-        if (supabaseToken === tokenRef.current && clientRef.current) {
-          return clientRef.current;
-        }
-
-        // Create new client
-        const client = createClient(supabaseUrl, supabaseAnonKey, {
-          global: {
-            headers: {
-              Authorization: `Bearer ${supabaseToken}`
-            }
-          },
-          auth: {
-            persistSession: true,
-            autoRefreshToken: true,
-            detectSessionInUrl: false
-          }
-        });
-
-        // Update cache
-        const expiresAt = getTokenExpiration(supabaseToken);
-        tokenCache.set(supabaseToken, { token: supabaseToken, expiresAt });
-        persistTokenCache();
-        
-        // Update refs and global state
-        clientRef.current = client;
-        tokenRef.current = supabaseToken;
-        globalClient = client;
-        globalToken = supabaseToken;
-
-        return client;
-      } catch (error) {
-        throw new Error(`Failed to initialize Supabase client: ${error}`);
+      // If a client initialization is already in progress, wait for it
+      if (globalState.initializationPromise) {
+        return globalState.initializationPromise;
       }
-    };
-  }, [session, isLoaded, isSignedIn]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      // Only cleanup if this instance owns the global client
-      if (globalToken === tokenRef.current) {
-        globalClient = null;
-        globalToken = null;
-      }
+      // Create new initialization promise
+      globalState.initializationPromise = (async () => {
+        try {
+          // Get new token
+          const supabaseToken = await session.getToken({ template: 'supabase' });
+          if (!supabaseToken) {
+            throw new Error('Failed to get Supabase token');
+          }
+
+          // If token hasn't changed and client exists, return existing client
+          if (supabaseToken === globalState.token && globalState.client) {
+            return globalState.client;
+          }
+
+          // Create new client
+          const client = createSupabaseClient(supabaseToken);
+
+          // Update cache
+          const expiresAt = getTokenExpiration(supabaseToken);
+          tokenCache.set(supabaseToken, { token: supabaseToken, expiresAt });
+          persistTokenCache(tokenCache);
+          
+          // Update global state
+          globalState.client = client;
+          globalState.token = supabaseToken;
+          globalState.lastActivity = Date.now();
+
+          return client;
+        } finally {
+          globalState.initializationPromise = null;
+        }
+      })();
+
+      return globalState.initializationPromise;
     };
-  }, []);
+  }, [session, isLoaded, isSignedIn, tokenCache]);
 
   return {
     getClient,

@@ -369,9 +369,6 @@ function SpreadsheetCardContent({ sheet, onUpdate }: { sheet: UISpreadsheet, onU
                 <div className="min-h-[24px]">
                   <SpreadsheetTags spreadsheetId={sheet.id} className="mb-2" />
                 </div>
-                <div className="flex items-center text-xs text-gray-500">
-                  <span>Opened {formatDistanceToNow(new Date(sheet.updated_at))} ago</span>
-                </div>
               </div>
             </div>
           </div>
@@ -597,6 +594,9 @@ export default function DashboardPage() {
   const [isCreatingSheet, setIsCreatingSheet] = useState(false)
   const [activeFilters, setActiveFilters] = useState<Filter[]>([])
   const router = useRouter()
+  const dataFetchedRef = useRef(false)
+  const visibilityRef = useRef(true)
+  const lastLoadRef = useRef(Date.now())
   
   const isTrashView = searchParams.get('trash') === 'true'
 
@@ -651,63 +651,92 @@ export default function DashboardPage() {
     }
   }, [searchParams, activeFolder, activeTag, setActiveFolder, setActiveTag])
 
+  // Handle visibility changes
   useEffect(() => {
-    if (isLoaded && isSignedIn) {
+    const handleVisibilityChange = () => {
+      const isVisible = !document.hidden;
+      // Only trigger reload if visibility changes from hidden to visible
+      // and it's been more than 5 minutes since last load
+      if (isVisible && !visibilityRef.current && Date.now() - lastLoadRef.current > 5 * 60 * 1000) {
+        loadSpreadsheets();
+      }
+      visibilityRef.current = isVisible;
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
+
+  // Initial load
+  useEffect(() => {
+    if (isLoaded && isSignedIn && !dataFetchedRef.current) {
+      dataFetchedRef.current = true;
       if (isTrashView) {
-        loadTrashedItems()
+        loadTrashedItems();
       } else {
-        loadSpreadsheets()
+        loadSpreadsheets();
       }
     }
-  }, [isLoaded, isSignedIn, activeFolder, activeTag, isTrashView])
+  }, [isLoaded, isSignedIn, isTrashView]);
 
-  // Load spreadsheets with their tags
+  // Handle filter changes
+  useEffect(() => {
+    if (dataFetchedRef.current && (activeFolder || activeTag)) {
+      loadSpreadsheets();
+    }
+  }, [activeFolder, activeTag]);
+
   async function loadSpreadsheets() {
-    setLoading(true)
-    setError(null)
+    if (!isLoaded || !isSignedIn) return;
+    
+    setLoading(true);
+    setError(null);
     try {
       // Load spreadsheets first
-      const response = await getSpreadsheets()
-      if (response.error) {
-        throw response.error
-      }
-      setSpreadsheets(response.data || [])
+      const { data: spreadsheetsData, error: spreadsheetsError } = await getSpreadsheets();
       
-      // Load tags in parallel for better performance
-      if (response.data && response.data.length > 0) {
-        const tagsMap: Record<string, string[]> = {}
+      if (spreadsheetsError) {
+        console.error('Error loading spreadsheets:', spreadsheetsError);
+        return;
+      }
+
+      if (spreadsheetsData) {
+        setSpreadsheets(spreadsheetsData as UISpreadsheet[]);
+        lastLoadRef.current = Date.now();
+
+        // Load tags for all spreadsheets
+        const tagsMap: Record<string, string[]> = {};
         
         // Load tags in parallel batches of 5 to avoid overwhelming the server
-        const batchSize = 5
-        for (let i = 0; i < response.data.length; i += batchSize) {
-          const batch = response.data.slice(i, i + batchSize)
+        const batchSize = 5;
+        for (let i = 0; i < spreadsheetsData.length; i += batchSize) {
+          const batch = spreadsheetsData.slice(i, i + batchSize);
           const promises = batch.map(async (sheet) => {
             try {
-              const tags = await getSpreadsheetTags(sheet.id)
-              return { sheetId: sheet.id, tags }
+              const tags = await getSpreadsheetTags(sheet.id);
+              return { sheetId: sheet.id, tags };
             } catch (error) {
-              console.error(`Failed to load tags for sheet ${sheet.id}:`, error)
-              return { sheetId: sheet.id, tags: [] }
+              console.error(`Failed to load tags for sheet ${sheet.id}:`, error);
+              return { sheetId: sheet.id, tags: [] };
             }
-          })
+          });
           
-          const results = await Promise.all(promises)
+          const results = await Promise.all(promises);
           results.forEach(({ sheetId, tags }) => {
-            tagsMap[sheetId] = tags.map((tag: { id: string }) => tag.id)
-          })
-          
-          // Update tags map after each batch
-          setSpreadsheetTags(prev => ({
-            ...prev,
-            ...tagsMap
-          }))
+            tagsMap[sheetId] = tags.map((tag: { id: string }) => tag.id);
+          });
         }
+
+        // Update tags map after loading all tags
+        setSpreadsheetTags(tagsMap);
       }
-    } catch (e) {
-      console.error("Failed to load spreadsheets:", e)
-      setError(e instanceof Error ? e.message : "Failed to load spreadsheets")
+    } catch (error) {
+      console.error('Failed to load spreadsheets:', error);
+      setError(error instanceof Error ? error.message : 'Failed to load spreadsheets');
     } finally {
-      setLoading(false)
+      setLoading(false);
     }
   }
 
@@ -758,14 +787,28 @@ export default function DashboardPage() {
     setIsCreatingSheet(true)
     try {
       const response = await createSpreadsheet("Untitled Spreadsheet", activeFolder)
+      console.log("Create spreadsheet response:", response) // Debug log
+      
       if (response.error) {
         throw response.error
       }
-      if (response.data?.[0]?.id) {
-        window.location.href = `/spreadsheet/${response.data[0].id}`
+      
+      // Check if response and data exist
+      if (!response || !response.data) {
+        throw new Error("Invalid response format")
       }
+
+      // Get the spreadsheet data - it's a single object, not an array
+      const spreadsheet = response.data
+      
+      if (!spreadsheet?.id) {
+        throw new Error("Created spreadsheet has no ID")
+      }
+
+      router.push(`/spreadsheet/${spreadsheet.id}`)
     } catch (e) {
       console.error("Failed to create spreadsheet:", e)
+      toast.error(e instanceof Error ? e.message : "Failed to create spreadsheet")
       setIsCreatingSheet(false)
     }
   }
@@ -787,43 +830,53 @@ export default function DashboardPage() {
 
   // Filter spreadsheets based on URL parameters and active filters
   const filteredSpreadsheets = React.useMemo(() => {
-    let filtered = spreadsheets
+    let filtered = spreadsheets;
 
     // Apply URL-based filters (sidebar)
     if (activeTag) {
       filtered = filtered.filter(sheet => {
-        const sheetTags = spreadsheetTags[sheet.id]
-        return sheetTags?.includes(activeTag)
-      })
+        const sheetTags = spreadsheetTags[sheet.id] || [];
+        return sheetTags.includes(activeTag);
+      });
     }
+
     if (activeFolder) {
-      filtered = filtered.filter(sheet => sheet.folder_id === activeFolder)
+      filtered = filtered.filter(sheet => sheet.folder_id === activeFolder);
     }
 
     // Apply additional filters from filter button
     if (activeFilters.length > 0) {
+      const tagFilters = activeFilters.filter(f => f.type === 'tag').map(f => f.id);
+      const folderFilters = activeFilters.filter(f => f.type === 'folder').map(f => f.id);
+
       filtered = filtered.filter(sheet => {
-        return activeFilters.every(filter => {
-          if (filter.type === 'tag') {
-            const sheetTags = spreadsheetTags[sheet.id]
-            return sheetTags?.includes(filter.id)
-          } else if (filter.type === 'folder') {
-            return sheet.folder_id === filter.id
+        // Check folder filters
+        if (folderFilters.length > 0) {
+          if (!folderFilters.includes(sheet.folder_id || '')) {
+            return false;
           }
-          return false
-        })
-      })
+        }
+
+        // Check tag filters
+        if (tagFilters.length > 0) {
+          const sheetTags = spreadsheetTags[sheet.id] || [];
+          // Sheet must have ALL selected tags (AND operation)
+          return tagFilters.every(tagId => sheetTags.includes(tagId));
+        }
+
+        return true;
+      });
     }
 
     // Apply search filter if exists
     if (searchQuery) {
       filtered = filtered.filter(sheet =>
         sheet.title.toLowerCase().includes(searchQuery.toLowerCase())
-      )
+      );
     }
 
-    return filtered
-  }, [spreadsheets, activeTag, activeFolder, activeFilters, spreadsheetTags, searchQuery])
+    return filtered;
+  }, [spreadsheets, activeTag, activeFolder, activeFilters, spreadsheetTags, searchQuery]);
 
   // Filter starred and recent spreadsheets from filtered results
   const starredSpreadsheets = React.useMemo(() => 
