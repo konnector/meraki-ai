@@ -110,6 +110,42 @@ export function useSpreadsheetApi() {
         .select('*')
         .eq('is_deleted', true)
         .order('deleted_at', { ascending: false });
+    },
+
+    // Record a visit to a spreadsheet
+    async recordSpreadsheetVisit(spreadsheetId: string) {
+      console.log("recordSpreadsheetVisit called with ID:", spreadsheetId);
+      
+      try {
+        const client = await getClient();
+        console.log("Got Supabase client, making RPC call");
+        
+        const response = await client.rpc('increment_visit_count', { 
+          p_spreadsheet_id: spreadsheetId 
+        });
+        
+        console.log("RPC response:", response);
+        return response;
+      } catch (error) {
+        console.error("Error in recordSpreadsheetVisit:", error);
+        throw error;
+      }
+    },
+
+    // Get most visited spreadsheets
+    async getMostVisitedSpreadsheets(limit = 5) {
+      const client = await getClient();
+      return client
+        .from('most_visited')
+        .select(`
+          spreadsheet_id,
+          visit_count,
+          last_visited,
+          spreadsheets:spreadsheet_id (*)
+        `)
+        .order('visit_count', { ascending: false })
+        .order('last_visited', { ascending: false })
+        .limit(limit);
     }
   };
 } 

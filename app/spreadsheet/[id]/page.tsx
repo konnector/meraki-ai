@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import SpreadsheetGrid from "@/components/SpreadSheet/spreadsheet-grid"
@@ -27,7 +27,29 @@ function SpreadsheetContent() {
   const { title, setTitle, isStarred, toggleStar, isLoading } = useSpreadsheet()
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const { isLoaded } = useSpreadsheetApi()
+  const [visitRecorded, setVisitRecorded] = useState(false)
+  const spreadsheetApi = useSpreadsheetApi()
+  const { isLoaded, recordSpreadsheetVisit } = spreadsheetApi
+  const params = useParams()
+  const spreadsheetId = typeof params?.id === 'string' ? params.id : null
+
+  useEffect(() => {
+    // Only record visit once per page load
+    if (spreadsheetId && isLoaded && !visitRecorded) {
+      const recordVisit = async () => {
+        try {
+          console.log("Attempting to record visit for spreadsheet:", spreadsheetId);
+          const result = await recordSpreadsheetVisit(spreadsheetId);
+          console.log('Visit record attempt result:', result);
+          setVisitRecorded(true);
+        } catch (err) {
+          console.error('Failed to record spreadsheet visit:', err);
+        }
+      };
+
+      recordVisit();
+    }
+  }, [spreadsheetId, isLoaded, visitRecorded, recordSpreadsheetVisit]);
 
   const handleTitleClick = () => {
     setIsEditingTitle(true)

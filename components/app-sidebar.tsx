@@ -32,6 +32,54 @@ import { SettingsModal } from "./settings-modal"
 import { CreateFolderModal } from "./create-folder-modal"
 import { FoldersSection } from "./folders-section"
 import { TagsSection } from "./tags-section"
+import { MostVisitedSection } from "./Dashboard/MostVisitedSection"
+
+function ProfileSection({ onSettingsClick }: { onSettingsClick: () => void }) {
+  const { user, isLoaded } = useUser()
+
+  if (!isLoaded) {
+    return (
+      <div className="w-62 flex items-center gap-2 rounded-[12px] border bg-card text-card-foreground shadow-sm mb-6 mx-2 p-3">
+        <div className="relative flex shrink-0 overflow-hidden rounded-full w-8 h-8 bg-gray-100 animate-pulse" />
+        <div className="flex flex-col flex-1 min-w-0 gap-1">
+          <div className="h-4 w-24 bg-gray-100 rounded animate-pulse" />
+          <div className="h-3 w-32 bg-gray-100 rounded animate-pulse" />
+        </div>
+        <div className="flex items-center gap-2">
+          <div className="w-5 h-5 bg-gray-100 rounded animate-pulse" />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-62 flex items-center gap-2 rounded-[12px] border bg-card text-card-foreground shadow-sm mb-6 mx-2 p-3">
+      <span className="relative flex shrink-0 overflow-hidden rounded-full w-8 h-8">
+        <img 
+          className="aspect-square h-full w-full" 
+          src={user?.imageUrl} 
+          alt={user?.fullName || 'User avatar'}
+        />
+      </span>
+      <div className="flex flex-col flex-1 min-w-0">
+        <small className="text-sm font-medium leading-none truncate">
+          <b>{user?.fullName}</b>
+        </small>
+        <small className="font-medium text-muted-foreground text-xs truncate">
+          {user?.primaryEmailAddress?.emailAddress}
+        </small>
+      </div>
+      <div className="flex items-center gap-2">
+        <button 
+          onClick={onSettingsClick}
+          className="active:scale-110 transition-all duration-100"
+        >
+          <Settings className="w-5 h-5" />
+        </button>
+      </div>
+    </div>
+  )
+}
 
 export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
   const { user } = useUser()
@@ -77,6 +125,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               Tags
             </h3>
             <TagsSection />
+
+            <h3 className="mt-6 mb-2 px-2 text-sm font-semibold text-muted-foreground">
+              Most Visited
+            </h3>
+            <MostVisitedSection />
           </div>
         </SidebarContent>
 
@@ -91,31 +144,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
             </button>
           </div>
 
-          <div className="w-62 flex items-center gap-2 rounded-[12px] border bg-card text-card-foreground shadow-sm mb-6 mx-2 p-3">
-            <span className="relative flex shrink-0 overflow-hidden rounded-full w-8 h-8">
-              <img 
-                className="aspect-square h-full w-full" 
-                src={user?.imageUrl} 
-                alt={user?.fullName || 'User avatar'}
-              />
-            </span>
-            <div className="flex flex-col flex-1 min-w-0">
-              <small className="text-sm font-medium leading-none truncate">
-                <b>{user?.fullName}</b>
-              </small>
-              <small className="font-medium text-muted-foreground text-xs truncate">
-                {user?.primaryEmailAddress?.emailAddress}
-              </small>
-            </div>
-            <div className="flex items-center gap-2">
-              <button 
-                onClick={() => setSettingsOpen(true)}
-                className="active:scale-110 transition-all duration-100"
-              >
-                <Settings className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
+          <ProfileSection onSettingsClick={() => setSettingsOpen(true)} />
         </SidebarFooter>
         <SidebarRail />
       </Sidebar>

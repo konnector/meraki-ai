@@ -66,7 +66,9 @@ const config = {
   		borderRadius: {
   			lg: 'var(--radius)',
   			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
+  			sm: 'calc(var(--radius) - 4px)',
+  			'tremor-small': '0.375rem',
+  			'tremor-full': '9999px'
   		},
   		keyframes: {
   			'accordion-down': {
@@ -84,11 +86,26 @@ const config = {
   				to: {
   					height: '0'
   				}
+  			},
+  			loading: {
+  				'0%': {
+  					opacity: '.2',
+  				},
+  				'20%': {
+  					opacity: '1',
+  				},
+  				'100%': {
+  					opacity: '.2',
+  				},
   			}
   		},
   		animation: {
   			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out'
+  			'accordion-up': 'accordion-up 0.2s ease-out',
+  			loading: 'loading 0.8s ease-in-out infinite'
+  		},
+  		fontSize: {
+  			'tremor-label': ['0.75rem', '1rem']
   		}
   	}
   },

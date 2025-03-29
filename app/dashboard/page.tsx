@@ -4,7 +4,7 @@ import { useEffect, useState, useRef } from "react"
 import { useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Bookmark, Clock, FileSpreadsheet, Search, MoreHorizontal, X, Trash2, RefreshCcw, FolderClosed } from "lucide-react"
+import { Plus, Bookmark, Clock, FileSpreadsheet, Search, MoreHorizontal, X, Trash2, RefreshCcw, FolderClosed, AlignJustify } from "lucide-react"
 import Link from "next/link"
 import DashboardLayout from "@/components/Dashboard/dashboard-layout"
 import { SidebarProvider } from "@/components/ui/sidebar"
@@ -29,6 +29,21 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { type Folder } from "@/lib/supabase/folder-api"
 import { useTag } from "@/context/tag-context"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+} from "@/components/ui/command"
+import { cn } from "@/lib/utils"
 
 // Extended spreadsheet type for UI operations
 interface UISpreadsheet extends Spreadsheet {
@@ -39,6 +54,13 @@ interface UISpreadsheet extends Spreadsheet {
 // Extended folder type with trash properties
 interface TrashedFolder extends Folder {
   deleted_at?: string;
+}
+
+interface Filter {
+  type: 'tag' | 'folder';
+  id: string;
+  name: string;
+  color?: string;
 }
 
 function SpreadsheetCard({ sheet, onUpdate }: { sheet: UISpreadsheet, onUpdate: (updatedSheet: UISpreadsheet) => void }) {
@@ -344,7 +366,9 @@ function SpreadsheetCardContent({ sheet, onUpdate }: { sheet: UISpreadsheet, onU
               </div>
               
               <div className="space-y-2">
-                <SpreadsheetTags spreadsheetId={sheet.id} className="mb-2" />
+                <div className="min-h-[24px]">
+                  <SpreadsheetTags spreadsheetId={sheet.id} className="mb-2" />
+                </div>
                 <div className="flex items-center text-xs text-gray-500">
                   <span>Opened {formatDistanceToNow(new Date(sheet.updated_at))} ago</span>
                 </div>
@@ -364,6 +388,199 @@ function SpreadsheetCardContent({ sheet, onUpdate }: { sheet: UISpreadsheet, onU
   )
 }
 
+function FilterButton({ activeFilters, onFilterChange }: { 
+  activeFilters: Filter[];
+  onFilterChange: (filters: Filter[]) => void;
+}) {
+  const [open, setOpen] = useState(false)
+  const [commandInput, setCommandInput] = useState("")
+  const commandInputRef = useRef<HTMLInputElement>(null)
+  const { tags } = useTag()
+  const { folders } = useFolder()
+
+  const handleTagSelect = (tagId: string, tagName: string, tagColor: string) => {
+    // Check if tag is already selected
+    if (!activeFilters.some(f => f.type === 'tag' && f.id === tagId)) {
+      onFilterChange([...activeFilters, { 
+        type: 'tag', 
+        id: tagId, 
+        name: tagName, 
+        color: tagColor 
+      }])
+    }
+    setOpen(false)
+  }
+
+  const handleFolderSelect = (folderId: string, folderName: string) => {
+    // Check if folder is already selected
+    if (!activeFilters.some(f => f.type === 'folder' && f.id === folderId)) {
+      onFilterChange([...activeFilters, { 
+        type: 'folder', 
+        id: folderId, 
+        name: folderName 
+      }])
+    }
+    setOpen(false)
+  }
+
+  const handleRemoveFilter = (filterToRemove: Filter) => {
+    onFilterChange(activeFilters.filter(f => 
+      !(f.type === filterToRemove.type && f.id === filterToRemove.id)
+    ))
+  }
+
+  const handleClearFilters = () => {
+    onFilterChange([])
+  }
+
+  const filteredTags = commandInput
+    ? tags.filter(tag => 
+        tag.name.toLowerCase().includes(commandInput.toLowerCase())
+      )
+    : tags
+
+  const filteredFolders = commandInput
+    ? folders.filter(folder => 
+        folder.name.toLowerCase().includes(commandInput.toLowerCase())
+      )
+    : folders
+
+  return (
+    <div className="flex gap-2 items-center flex-wrap">
+      <Popover
+        open={open}
+        onOpenChange={(open) => {
+          setOpen(open)
+          if (!open) {
+            setTimeout(() => {
+              setCommandInput("")
+            }, 200)
+          }
+        }}
+      >
+        <PopoverTrigger asChild>
+          <Button 
+            variant="outline" 
+            size="default" 
+            className={cn(
+              "bg-white h-9 w-9 p-0",
+              activeFilters.length > 0 && "ring-2 ring-primary/20"
+            )}
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 16 16"
+              fill="none"
+              xmlns="http://www.w3.org/2000/svg"
+              className={cn(
+                "text-gray-600",
+                activeFilters.length > 0 && "text-primary"
+              )}
+            >
+              <path
+                d="M2 4h12M4 8h8M6 12h4"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </Button>
+        </PopoverTrigger>
+        <PopoverContent className="w-[200px] p-0">
+          <Command>
+            <CommandInput
+              placeholder="Filter by tags or folders..."
+              className="h-9"
+              value={commandInput}
+              onInputCapture={(e) => {
+                setCommandInput(e.currentTarget.value)
+              }}
+              ref={commandInputRef}
+            />
+            <CommandList>
+              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandGroup heading="Tags">
+                {filteredTags.map((tag) => (
+                  <CommandItem
+                    key={tag.id}
+                    className={cn(
+                      "group text-muted-foreground flex gap-2 items-center",
+                      activeFilters.some(f => f.type === 'tag' && f.id === tag.id) && 
+                      "bg-primary/5 text-primary"
+                    )}
+                    onSelect={() => handleTagSelect(tag.id, tag.name, tag.color)}
+                  >
+                    <div 
+                      className="w-3 h-3 rounded-full flex-shrink-0" 
+                      style={{ backgroundColor: tag.color }}
+                    />
+                    <span className="text-accent-foreground truncate">{tag.name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandGroup heading="Folders">
+                {filteredFolders.map((folder) => (
+                  <CommandItem
+                    key={folder.id}
+                    className={cn(
+                      "group text-muted-foreground flex gap-2 items-center",
+                      activeFilters.some(f => f.type === 'folder' && f.id === folder.id) && 
+                      "bg-primary/5 text-primary"
+                    )}
+                    onSelect={() => handleFolderSelect(folder.id, folder.name)}
+                  >
+                    <FolderClosed className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                    <span className="text-accent-foreground truncate">{folder.name}</span>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            </CommandList>
+          </Command>
+        </PopoverContent>
+      </Popover>
+
+      {activeFilters.length > 0 && (
+        <div className="flex gap-2 items-center flex-wrap">
+          {activeFilters.map((filter, index) => (
+            <div 
+              key={`${filter.type}-${filter.id}`}
+              className="flex items-center gap-1 bg-primary/5 text-primary px-2 py-1 rounded-md text-xs"
+            >
+              {filter.type === 'tag' && (
+                <div 
+                  className="w-2 h-2 rounded-full flex-shrink-0" 
+                  style={{ backgroundColor: filter.color }}
+                />
+              )}
+              {filter.type === 'folder' && (
+                <FolderClosed className="h-3 w-3 flex-shrink-0" />
+              )}
+              <span>{filter.name}</span>
+              <X 
+                className="h-3 w-3 cursor-pointer hover:text-primary/80" 
+                onClick={() => handleRemoveFilter(filter)}
+              />
+            </div>
+          ))}
+          {activeFilters.length > 1 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 px-2 text-xs"
+              onClick={handleClearFilters}
+            >
+              Clear all
+            </Button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DashboardPage() {
   const searchParams = useSearchParams()
   const { getSpreadsheets, getTrashedSpreadsheets, createSpreadsheet, restoreSpreadsheet, isLoaded, isSignedIn } = useSpreadsheetApi()
@@ -378,7 +595,7 @@ export default function DashboardPage() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreatingSheet, setIsCreatingSheet] = useState(false)
-  const [headingVisible, setHeadingVisible] = useState(true)
+  const [activeFilters, setActiveFilters] = useState<Filter[]>([])
   const router = useRouter()
   
   const isTrashView = searchParams.get('trash') === 'true'
@@ -390,16 +607,12 @@ export default function DashboardPage() {
       const tag = tags.find(t => t.id === activeTag)
       return tag ? tag.name : "All Spreadsheets"
     }
-    if (!activeFolder) return "All Spreadsheets"
-    const folder = folders.find(f => f.id === activeFolder)
-    return folder ? folder.name : "All Spreadsheets"
-  }, [activeFolder, activeTag, folders, tags, isTrashView])
-
-  // Get the active tag for display purposes
-  const activeTagData = React.useMemo(() => {
-    if (!activeTag) return null
-    return tags.find(t => t.id === activeTag) || null
-  }, [activeTag, tags])
+    if (activeFolder) {
+      const folder = folders.find(f => f.id === activeFolder)
+      return folder ? folder.name : "All Spreadsheets"
+    }
+    return "All Spreadsheets"
+  }, [isTrashView, activeTag, activeFolder, tags, folders])
 
   // Sync activeFolder and activeTag with URL parameters
   useEffect(() => {
@@ -572,27 +785,37 @@ export default function DashboardPage() {
     })
   }
 
-  // Filter spreadsheets based on active folder, active tag, and search query
+  // Filter spreadsheets based on URL parameters and active filters
   const filteredSpreadsheets = React.useMemo(() => {
     let filtered = spreadsheets
 
-    // Filter by folder
+    // Apply URL-based filters (sidebar)
+    if (activeTag) {
+      filtered = filtered.filter(sheet => {
+        const sheetTags = spreadsheetTags[sheet.id]
+        return sheetTags?.includes(activeTag)
+      })
+    }
     if (activeFolder) {
       filtered = filtered.filter(sheet => sheet.folder_id === activeFolder)
     }
 
-    // Filter by tag if no folder is selected
-    if (activeTag && !activeFolder) {
+    // Apply additional filters from filter button
+    if (activeFilters.length > 0) {
       filtered = filtered.filter(sheet => {
-        // Check if the sheet has tags data
-        const sheetTags = spreadsheetTags[sheet.id]
-        if (!sheetTags) return false
-        // Check if the active tag is in the sheet's tags
-        return sheetTags.includes(activeTag)
+        return activeFilters.every(filter => {
+          if (filter.type === 'tag') {
+            const sheetTags = spreadsheetTags[sheet.id]
+            return sheetTags?.includes(filter.id)
+          } else if (filter.type === 'folder') {
+            return sheet.folder_id === filter.id
+          }
+          return false
+        })
       })
     }
 
-    // Filter by search query
+    // Apply search filter if exists
     if (searchQuery) {
       filtered = filtered.filter(sheet =>
         sheet.title.toLowerCase().includes(searchQuery.toLowerCase())
@@ -600,7 +823,7 @@ export default function DashboardPage() {
     }
 
     return filtered
-  }, [spreadsheets, activeFolder, activeTag, searchQuery, spreadsheetTags])
+  }, [spreadsheets, activeTag, activeFolder, activeFilters, spreadsheetTags, searchQuery])
 
   // Filter starred and recent spreadsheets from filtered results
   const starredSpreadsheets = React.useMemo(() => 
@@ -770,25 +993,24 @@ export default function DashboardPage() {
           <>
             {/* Defer non-critical rendering */}
             <React.Suspense fallback={<div className="h-8 w-full bg-gray-100 animate-pulse rounded"></div>}>
-              {/* Starred Spreadsheets */}
-              <div className="mb-8">
-                <div className="mb-4 flex items-center gap-2">
-                  <Bookmark className="h-5 w-5 text-gray-900" />
-                  <h3 className="text-xl font-semibold text-gray-900">Bookmarked</h3>
+              {/* Starred Spreadsheets - Only show if there are bookmarked items */}
+              {starredSpreadsheets.length > 0 && (
+                <div className="mb-8">
+                  <div className="mb-4 flex items-center gap-2">
+                    <Bookmark className="h-5 w-5 text-gray-900" />
+                    <h3 className="text-xl font-semibold text-gray-900">Bookmarked</h3>
+                  </div>
+                  <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+                    {starredSpreadsheets.map((sheet) => (
+                      <LazySpreadsheetCard 
+                        key={sheet.id} 
+                        sheet={sheet} 
+                        onUpdate={handleUpdateSpreadsheet}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-                  {starredSpreadsheets.map((sheet) => (
-                    <LazySpreadsheetCard 
-                      key={sheet.id} 
-                      sheet={sheet} 
-                      onUpdate={handleUpdateSpreadsheet}
-                    />
-                  ))}
-                  {starredSpreadsheets.length === 0 && (
-                    <p className="text-gray-500 col-span-full">No bookmarked spreadsheets yet</p>
-                  )}
-                </div>
-              </div>
+              )}
             </React.Suspense>
 
             {/* Lazy load recent spreadsheets */}
@@ -816,13 +1038,12 @@ export default function DashboardPage() {
                 className="text-3xl font-bold text-gray-900 flex items-center gap-2"
                 style={{ fontVariationSettings: "'wght' 700" }}
               >
-                {activeTagData ? (
+                {activeFilters.length > 0 || activeTag || activeFolder ? (
                   <>
-                    <div 
-                      className="w-6 h-6 rounded-full inline-flex flex-shrink-0" 
-                      style={{ backgroundColor: activeTagData.color }}
-                    />
-                    {activeTagData.name}
+                    {currentTitle}
+                    <span className="text-sm font-normal text-muted-foreground">
+                      ({filteredSpreadsheets.length} items)
+                    </span>
                   </>
                 ) : (
                   currentTitle
@@ -831,6 +1052,10 @@ export default function DashboardPage() {
               <div className="flex flex-col sm:flex-row items-center gap-4">
                 {!isTrashView && (
                   <>
+                    <FilterButton 
+                      activeFilters={activeFilters} 
+                      onFilterChange={setActiveFilters} 
+                    />
                     <div className="relative w-full sm:w-[400px]">
                       <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-gray-500" />
                       <Input
