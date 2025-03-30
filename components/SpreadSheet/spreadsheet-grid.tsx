@@ -1,10 +1,44 @@
 "use client"
 
 import { useRef, useState, useEffect, type MouseEvent, type KeyboardEvent, type ChangeEvent } from "react"
+import dynamic from "next/dynamic"
 import { cn } from "@/lib/utils"
 import { useSpreadsheet } from "@/context/spreadsheet-context"
 import Cell from "@/components/SpreadSheet/Cell"
 import { Button } from "@/components/ui/button"
+import { Copy, Scissors, ClipboardPaste } from "lucide-react"
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu"
+
+// Create a client-side only wrapper for the context menu
+const ClientSideContextMenu = dynamic(
+  () => Promise.resolve(({ children }: { children: React.ReactNode }) => (
+    <ContextMenu>
+      {children}
+    </ContextMenu>
+  )),
+  { ssr: false }
+)
+
+const ClientSideContextMenuTrigger = dynamic(
+  () => Promise.resolve(ContextMenuTrigger),
+  { ssr: false }
+)
+
+const ClientSideContextMenuContent = dynamic(
+  () => Promise.resolve(ContextMenuContent),
+  { ssr: false }
+)
+
+const ClientSideContextMenuItem = dynamic(
+  () => Promise.resolve(ContextMenuItem),
+  { ssr: false }
+)
 
 // Add global styles to prevent text selection during cell selection
 const preventSelectionStyle = {
@@ -308,6 +342,13 @@ export default function SpreadsheetGrid() {
     // Get the cell ID for the clicked cell
     const cellId = getCellId({ row, col })
 
+    // If right-click and there's an existing selection that includes the clicked cell,
+    // preserve the selection
+    if (e.button === 2 && selection && isCellSelected(row, col)) {
+      e.preventDefault()
+      return
+    }
+
     // If we're currently editing and click a different cell
     if (isEditing && activeCell !== cellId) {
       // Save the current edit
@@ -345,7 +386,7 @@ export default function SpreadsheetGrid() {
         })
         setIsSelecting(true)
         setSelectionStart({ row, col })
-      } else {
+      } else if (!e.button) { // Only reset selection on left click
         // For single click, just set the selection to the clicked cell
         setSelection({
           start: { row, col },
@@ -357,7 +398,7 @@ export default function SpreadsheetGrid() {
       }
     }
 
-    console.log(`Cell mouse down at row: ${row}, col: ${col}`);
+    console.log(`Cell mouse down at row: ${row}, col: ${col}`)
   }
 
   const handleCellMouseMove = (row: number, col: number, e: MouseEvent) => {
@@ -567,112 +608,197 @@ export default function SpreadsheetGrid() {
           height: `${(100 / zoomLevel) * 100}%`
         }}
       >
+        {/* Column and Row Headers (Sticky) */}
         <div className="grid sticky top-0 z-10" style={{ gridTemplateColumns: `40px ${columnWidths.map(w => `${w}px`).join(' ')}` }}>
           {/* Empty corner cell */}
           <div className="h-8 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center" style={preventSelectionStyle}></div>
 
           {/* Column headers */}
           {columnHeaders.map((header, colIndex) => (
-            <div key={header} className="relative">
-              <div
-                className={cn(
-                  "h-8 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors",
-                  isEntireColumnSelected(colIndex) && "bg-gray-200"
-                )}
-                style={preventSelectionStyle}
-                onClick={(e) => handleColumnHeaderClick(colIndex, e)}
-              >
-                {header}
-              </div>
-              {/* Column resize handle */}
-              <div
-                className={cn(
-                  "absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-gray-600 group",
-                  isResizingColumn && resizingColumn === colIndex && "bg-gray-800"
-                )}
-                onMouseDown={(e) => handleColumnResizeStart(e, colIndex)}
-              >
-                <div className="absolute inset-y-0 right-0 w-4 -mr-2" />
-              </div>
-            </div>
+            <ClientSideContextMenu key={header}>
+              <ClientSideContextMenuTrigger>
+                <div className="relative">
+                  <div
+                    className={cn(
+                      "h-8 bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 cursor-pointer hover:bg-gray-200 transition-colors",
+                      isEntireColumnSelected(colIndex) && "bg-gray-200"
+                    )}
+                    style={preventSelectionStyle}
+                    onClick={(e) => handleColumnHeaderClick(colIndex, e)}
+                  >
+                    {header}
+                  </div>
+                  {/* Column resize handle */}
+                  <div
+                    className={cn(
+                      "absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-gray-600 group",
+                      isResizingColumn && resizingColumn === colIndex && "bg-gray-800"
+                    )}
+                    onMouseDown={(e) => handleColumnResizeStart(e, colIndex)}
+                  >
+                    <div className="absolute inset-y-0 right-0 w-4 -mr-2" />
+                  </div>
+                </div>
+              </ClientSideContextMenuTrigger>
+              <ClientSideContextMenuContent className="w-48">
+                <ClientSideContextMenuItem inset onSelect={() => {
+                  setSelection({
+                    start: { row: 0, col: colIndex },
+                    end: { row: 99, col: colIndex }
+                  });
+                  copySelection();
+                }}>
+                  <Copy className="mr-2 h-4 w-4" /> Copy Column
+                </ClientSideContextMenuItem>
+                <ClientSideContextMenuItem inset onSelect={() => {
+                  setSelection({
+                    start: { row: 0, col: colIndex },
+                    end: { row: 99, col: colIndex }
+                  });
+                  cutSelection();
+                }}>
+                  <Scissors className="mr-2 h-4 w-4" /> Cut Column
+                </ClientSideContextMenuItem>
+                <ClientSideContextMenuItem inset onSelect={() => {
+                  setSelection({
+                    start: { row: 0, col: colIndex },
+                    end: { row: 99, col: colIndex }
+                  });
+                  pasteSelection();
+                }}>
+                  <ClipboardPaste className="mr-2 h-4 w-4" /> Paste Column
+                </ClientSideContextMenuItem>
+              </ClientSideContextMenuContent>
+            </ClientSideContextMenu>
           ))}
         </div>
 
-        {/* Grid rows */}
-        {rowHeaders.map((rowNum, rowIndex) => (
-          <div key={rowNum} className="grid relative" style={{ gridTemplateColumns: `40px ${columnWidths.map(w => `${w}px`).join(' ')}` }}>
-            {/* Row header */}
-            <div 
-              className={cn(
-                "bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 sticky left-0 z-10 cursor-pointer hover:bg-gray-200 transition-colors relative",
-                isEntireRowSelected(rowIndex) && "bg-gray-200"
-              )}
-              style={{
-                ...preventSelectionStyle,
-                height: `${rowHeights[rowIndex]}px`,
-              }}
-              onClick={(e) => handleRowHeaderClick(rowIndex, e)}
-            >
-              {rowNum}
-              
-              {/* Row resize handle */}
-              <div
-                className={cn(
-                  "absolute bottom-0 left-0 h-1 w-full cursor-row-resize hover:bg-gray-600",
-                  isResizingRow && resizingRow === rowIndex && "bg-gray-800"
-                )}
-                onMouseDown={(e) => handleRowResizeStart(e, rowIndex)}
-              >
-                <div className="absolute inset-x-0 bottom-0 h-4 -mb-2" />
-              </div>
-            </div>
+        {/* Grid Content Area - Wrapped in Context Menu */}
+        <ClientSideContextMenu>
+          <ClientSideContextMenuTrigger>
+            <div className="relative" style={{ width: 'fit-content' }}>
+              {/* Grid rows */}
+              {rowHeaders.map((rowNum, rowIndex) => (
+                <div key={rowNum} className="grid relative" style={{ gridTemplateColumns: `40px ${columnWidths.map(w => `${w}px`).join(' ')}` }}>
+                  {/* Row header */}
+                  <ClientSideContextMenu>
+                    <ClientSideContextMenuTrigger>
+                      <div 
+                        className={cn(
+                          "bg-gray-100 border-b border-r border-gray-200 flex items-center justify-center font-medium text-gray-600 sticky left-0 z-10 cursor-pointer hover:bg-gray-200 transition-colors relative",
+                          isEntireRowSelected(rowIndex) && "bg-gray-200"
+                        )}
+                        style={{
+                          ...preventSelectionStyle,
+                          height: `${rowHeights[rowIndex]}px`,
+                        }}
+                        onClick={(e) => handleRowHeaderClick(rowIndex, e)}
+                      >
+                        {rowNum}
+                        
+                        {/* Row resize handle */}
+                        <div
+                          className={cn(
+                            "absolute bottom-0 left-0 h-1 w-full cursor-row-resize hover:bg-gray-600",
+                            isResizingRow && resizingRow === rowIndex && "bg-gray-800"
+                          )}
+                          onMouseDown={(e) => handleRowResizeStart(e, rowIndex)}
+                        >
+                          <div className="absolute inset-x-0 bottom-0 h-4 -mb-2" />
+                        </div>
+                      </div>
+                    </ClientSideContextMenuTrigger>
+                    <ClientSideContextMenuContent className="w-48">
+                      <ClientSideContextMenuItem inset onSelect={() => {
+                        setSelection({
+                          start: { row: rowIndex, col: 0 },
+                          end: { row: rowIndex, col: 25 }
+                        });
+                        copySelection();
+                      }}>
+                        <Copy className="mr-2 h-4 w-4" /> Copy Row
+                      </ClientSideContextMenuItem>
+                      <ClientSideContextMenuItem inset onSelect={() => {
+                        setSelection({
+                          start: { row: rowIndex, col: 0 },
+                          end: { row: rowIndex, col: 25 }
+                        });
+                        cutSelection();
+                      }}>
+                        <Scissors className="mr-2 h-4 w-4" /> Cut Row
+                      </ClientSideContextMenuItem>
+                      <ClientSideContextMenuItem inset onSelect={() => {
+                        setSelection({
+                          start: { row: rowIndex, col: 0 },
+                          end: { row: rowIndex, col: 25 }
+                        });
+                        pasteSelection();
+                      }}>
+                        <ClipboardPaste className="mr-2 h-4 w-4" /> Paste Row
+                      </ClientSideContextMenuItem>
+                    </ClientSideContextMenuContent>
+                  </ClientSideContextMenu>
 
-            {/* Row cells */}
-            {columnHeaders.map((colLetter, colIndex) => {
-              const cellId = getCellId({ row: rowIndex, col: colIndex })
-              const isActive = activeCell === cellId
-              const isSelected = isCellSelected(rowIndex, colIndex)
+                  {/* Row cells */}
+                  {columnHeaders.map((colLetter, colIndex) => {
+                    const cellId = getCellId({ row: rowIndex, col: colIndex })
+                    const isActive = activeCell === cellId
+                    const isSelected = isCellSelected(rowIndex, colIndex)
 
-              return (
-                <div
-                  key={`${rowIndex}-${colIndex}`}
-                  className={cn(
-                    "border-b border-r border-gray-200 relative",
-                    isActive && "outline outline-2 outline-gray-800 z-20",
-                    isSelected && !isActive && "bg-gray-100/70",
-                    isActive && isSelected && "bg-gray-200",
-                  )}
-                  style={{
-                    height: `${rowHeights[rowIndex]}px`,
-                    ...((!isEditing) ? preventSelectionStyle : undefined),
-                  }}
-                  onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
-                  onMouseMove={(e) => handleCellMouseMove(rowIndex, colIndex, e)}
-                  onMouseUp={handleCellMouseUp}
-                  onDoubleClick={() => handleCellDoubleClick(rowIndex, colIndex)}
-                >
-                  {isActive && isEditing ? (
-                    <input
-                      className="absolute inset-0 w-full h-full px-2 border-none outline-none bg-white"
-                      value={editValue}
-                      onChange={handleCellChange}
-                      onBlur={handleCellBlur}
-                      autoFocus
-                    />
-                  ) : (
-                    <Cell
-                      data={cells[cellId]}
-                      isEditing={false}
-                      editValue=""
-                    />
-                  )}
+                    return (
+                      // Cell div - ContextMenu is now outside this loop
+                      <div
+                        key={`${rowIndex}-${colIndex}-div`}
+                        className={cn(
+                          "border-b border-r border-gray-200 relative",
+                          isActive && "outline outline-2 outline-gray-800 z-20",
+                          isSelected && !isActive && "bg-gray-100/70",
+                          isActive && isSelected && "bg-gray-200",
+                        )}
+                        style={{
+                          height: `${rowHeights[rowIndex]}px`,
+                          ...((!isEditing) ? preventSelectionStyle : undefined),
+                        }}
+                        onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
+                        onMouseMove={(e) => handleCellMouseMove(rowIndex, colIndex, e)}
+                        onMouseUp={handleCellMouseUp}
+                        onDoubleClick={() => handleCellDoubleClick(rowIndex, colIndex)}
+                      >
+                        {isActive && isEditing ? (
+                          <input
+                            className="absolute inset-0 w-full h-full px-2 border-none outline-none bg-white"
+                            value={editValue}
+                            onChange={handleCellChange}
+                            onBlur={handleCellBlur}
+                            autoFocus
+                          />
+                        ) : (
+                          <Cell
+                            data={cells[cellId]}
+                            isEditing={false}
+                            editValue=""
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
                 </div>
-              )
-            })}
-
-
-          </div>
-        ))}
+              ))}
+            </div>
+          </ClientSideContextMenuTrigger>
+          {/* Single Context Menu Content for the Grid */}
+          <ClientSideContextMenuContent className="w-48">
+            <ClientSideContextMenuItem inset onSelect={copySelection}>
+              <Copy className="mr-2 h-4 w-4" /> Copy
+            </ClientSideContextMenuItem>
+            <ClientSideContextMenuItem inset onSelect={cutSelection}>
+              <Scissors className="mr-2 h-4 w-4" /> Cut
+            </ClientSideContextMenuItem>
+            <ClientSideContextMenuItem inset onSelect={pasteSelection}>
+              <ClipboardPaste className="mr-2 h-4 w-4" /> Paste
+            </ClientSideContextMenuItem>
+          </ClientSideContextMenuContent>
+        </ClientSideContextMenu>
       </div>
     </div>
   )

@@ -1,6 +1,6 @@
 "use client"
 
-import React from 'react';
+import React, { useState } from 'react';
 import { cn } from "@/lib/utils";
 
 interface CellData {
@@ -174,53 +174,57 @@ const Cell: React.FC<CellProps> = ({
   }
 
   return (
-    <div
-      className={cn(
-        "px-2 py-1 overflow-hidden text-sm whitespace-nowrap h-full flex items-center",
-        data?.error && "text-red-500"
-      )}
-      style={{
-        fontFamily: data?.format?.fontFamily === "serif"
-          ? "serif"
-          : data?.format?.fontFamily === "mono"
-            ? "monospace"
-            : data?.format?.fontFamily === "inter"
-              ? "Inter, sans-serif"
-              : data?.format?.fontFamily === "roboto"
-                ? "Roboto, sans-serif"
-                : data?.format?.fontFamily === "poppins"
-                  ? "Poppins, sans-serif"
-                  : "sans-serif",
-        fontSize: data?.format?.fontSize === "xs"
-          ? "10px"
-          : data?.format?.fontSize === "sm"
-            ? "12px"
-            : data?.format?.fontSize === "lg"
-              ? "16px"
-              : data?.format?.fontSize === "xl"
-                ? "18px"
-                : data?.format?.fontSize === "2xl"
-                  ? "20px"
-                  : data?.format?.fontSize === "3xl"
-                    ? "24px"
-                    : "14px",
-        fontWeight: data?.format?.bold ? "bold" : "normal",
-        fontStyle: data?.format?.italic ? "italic" : "normal",
-        textDecoration: data?.format?.underline ? "underline" : "none",
-        textAlign: data?.format?.align || "left",
-        color: data?.error ? "red" : (data?.format?.textColor || "inherit"),
-        backgroundColor: data?.format?.fillColor || "transparent",
-        width: "100%",
-        justifyContent: data?.format?.align === "center"
-          ? "center"
-          : data?.format?.align === "right"
-            ? "flex-end"
-            : "flex-start",
-        userSelect: "none"
-      }}
-    >
-      {displayValue}
-    </div>
+    <>
+      <div
+        className={cn(
+          "px-2 py-1 overflow-hidden text-sm whitespace-nowrap h-full flex items-center",
+          data?.error && "text-red-500"
+        )}
+        style={{
+          fontFamily: data?.format?.fontFamily === "serif"
+            ? "serif"
+            : data?.format?.fontFamily === "mono"
+              ? "monospace"
+              : data?.format?.fontFamily === "inter"
+                ? "Inter, sans-serif"
+                : data?.format?.fontFamily === "roboto"
+                  ? "Roboto, sans-serif"
+                  : data?.format?.fontFamily === "poppins"
+                    ? "Poppins, sans-serif"
+                    : "sans-serif",
+          fontSize: data?.format?.fontSize === "xs"
+            ? "10px"
+            : data?.format?.fontSize === "sm"
+              ? "12px"
+              : data?.format?.fontSize === "lg"
+                ? "16px"
+                : data?.format?.fontSize === "xl"
+                  ? "18px"
+                  : data?.format?.fontSize === "2xl"
+                    ? "20px"
+                    : data?.format?.fontSize === "3xl"
+                      ? "24px"
+                      : "14px",
+          fontWeight: data?.format?.bold ? "bold" : "normal",
+          fontStyle: data?.format?.italic ? "italic" : "normal",
+          textDecoration: data?.format?.underline ? "underline" : "none",
+          textAlign: data?.format?.align || "left",
+          color: data?.error ? "red" : (data?.format?.textColor || "inherit"),
+          backgroundColor: data?.format?.fillColor || "transparent",
+          width: "100%",
+          justifyContent: data?.format?.align === "center"
+            ? "center"
+            : data?.format?.align === "right"
+              ? "flex-end"
+              : "flex-start",
+          userSelect: "none"
+        }}
+      >
+        {displayValue}
+      </div>
+
+    
+    </>
   );
 };
 
