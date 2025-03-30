@@ -65,6 +65,9 @@ export default function SpreadsheetGrid() {
     getSelectedCells,
     getCellDisplayValue,
     isCellFormula,
+    isCellPartOfMerge,
+    isCellMergeParent,
+    getMergeParent,
     undo,
     redo,
     zoomLevel
@@ -590,6 +593,42 @@ export default function SpreadsheetGrid() {
     }
   }, [selection, getSelectedCells]);
 
+  // Helper function to get merge information for a cell
+  const getCellMergeInfo = (row: number, col: number) => {
+    const cellId = getCellId({ row, col });
+    
+    if (isCellPartOfMerge(cellId)) {
+      const parentId = getMergeParent(cellId);
+      const isParent = isCellMergeParent(cellId);
+      
+      if (parentId && cells[parentId]?.mergeInfo?.mergeArea) {
+        const mergeArea = cells[parentId].mergeInfo.mergeArea;
+        
+        // Calculate dimensions of the merged area
+        const mergeWidth = mergeArea.endCol - mergeArea.startCol + 1;
+        const mergeHeight = mergeArea.endRow - mergeArea.startRow + 1;
+        
+        return {
+          isMerged: true,
+          isParent,
+          parentId,
+          mergeArea,
+          mergeWidth,
+          mergeHeight
+        };
+      }
+    }
+    
+    return {
+      isMerged: false,
+      isParent: false,
+      parentId: null,
+      mergeArea: null,
+      mergeWidth: 1,
+      mergeHeight: 1
+    };
+  };
+
   return (
     <div 
       className="relative overflow-auto h-full" 
@@ -742,8 +781,14 @@ export default function SpreadsheetGrid() {
                   {/* Row cells */}
                   {columnHeaders.map((colLetter, colIndex) => {
                     const cellId = getCellId({ row: rowIndex, col: colIndex })
+                    const { isMerged, isParent, mergeWidth, mergeHeight } = getCellMergeInfo(rowIndex, colIndex)
                     const isActive = activeCell === cellId
                     const isSelected = isCellSelected(rowIndex, colIndex)
+
+                    // Skip rendering if this is a merged child cell
+                    if (isMerged && !isParent) {
+                      return null;
+                    }
 
                     return (
                       // Cell div - ContextMenu is now outside this loop
@@ -758,6 +803,8 @@ export default function SpreadsheetGrid() {
                         style={{
                           height: `${rowHeights[rowIndex]}px`,
                           ...((!isEditing) ? preventSelectionStyle : undefined),
+                          gridColumn: isParent ? `span ${mergeWidth}` : undefined,
+                          gridRow: isParent ? `span ${mergeHeight}` : undefined
                         }}
                         onMouseDown={(e) => handleCellMouseDown(rowIndex, colIndex, e)}
                         onMouseMove={(e) => handleCellMouseMove(rowIndex, colIndex, e)}
@@ -777,6 +824,10 @@ export default function SpreadsheetGrid() {
                             data={cells[cellId]}
                             isEditing={false}
                             editValue=""
+                            isMerged={isMerged}
+                            isParentCell={isParent}
+                            mergeWidth={mergeWidth}
+                            mergeHeight={mergeHeight}
                           />
                         )}
                       </div>

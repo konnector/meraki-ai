@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState } from 'react';
+import React, { useState, CSSProperties } from 'react';
 import { cn } from "@/lib/utils";
 
 interface CellData {
@@ -24,6 +24,15 @@ interface CellData {
     dateFormat?: string;
     timeFormat?: string;
   };
+  mergeInfo?: {
+    parent: string;
+    mergeArea?: {
+      startRow: number;
+      startCol: number;
+      endRow: number;
+      endCol: number;
+    }
+  }
 }
 
 interface CellProps {
@@ -32,6 +41,10 @@ interface CellProps {
   editValue?: string;
   onChange?: (value: string) => void;
   onBlur?: () => void;
+  isMerged?: boolean;
+  isParentCell?: boolean;
+  mergeWidth?: number;
+  mergeHeight?: number;
 }
 
 const Cell: React.FC<CellProps> = ({ 
@@ -39,7 +52,11 @@ const Cell: React.FC<CellProps> = ({
   isEditing, 
   editValue = "", 
   onChange, 
-  onBlur 
+  onBlur,
+  isMerged = false,
+  isParentCell = false,
+  mergeWidth = 1,
+  mergeHeight = 1
 }) => {
   const formatValue = (value: string, format?: CellData['format']): string => {
     if (!format || !format.numberFormat || format.numberFormat === "general") {
@@ -161,6 +178,56 @@ const Cell: React.FC<CellProps> = ({
     return formatValue(data?.value || '', data?.format);
   }, [data, isEditing, editValue]);
 
+  // If this is a merged child cell (not the parent), don't render anything
+  if (isMerged && !isParentCell) {
+    return null;
+  }
+
+  const cellStyle: CSSProperties = {
+    fontFamily: data?.format?.fontFamily === "serif"
+      ? "serif"
+      : data?.format?.fontFamily === "mono"
+        ? "monospace"
+        : data?.format?.fontFamily === "inter"
+          ? "Inter, sans-serif"
+          : data?.format?.fontFamily === "roboto"
+            ? "Roboto, sans-serif"
+            : data?.format?.fontFamily === "poppins"
+              ? "Poppins, sans-serif"
+              : "sans-serif",
+    fontSize: data?.format?.fontSize === "xs"
+      ? "10px"
+      : data?.format?.fontSize === "sm"
+        ? "12px"
+        : data?.format?.fontSize === "lg"
+          ? "16px"
+          : data?.format?.fontSize === "xl"
+            ? "18px"
+            : data?.format?.fontSize === "2xl"
+              ? "20px"
+              : data?.format?.fontSize === "3xl"
+                ? "24px"
+                : "14px",
+    fontWeight: data?.format?.bold ? "bold" : "normal",
+    fontStyle: data?.format?.italic ? "italic" : "normal",
+    textDecoration: data?.format?.underline ? "underline" : "none",
+    textAlign: data?.format?.align || "left",
+    color: data?.error ? "red" : (data?.format?.textColor || "inherit"),
+    backgroundColor: data?.format?.fillColor || "transparent",
+    width: "100%",
+    justifyContent: data?.format?.align === "center"
+      ? "center"
+      : data?.format?.align === "right"
+        ? "flex-end"
+        : "flex-start",
+    userSelect: "none" as const,
+    // Add merge-specific styles
+    gridColumn: isParentCell ? `span ${mergeWidth}` : undefined,
+    gridRow: isParentCell ? `span ${mergeHeight}` : undefined,
+    position: "relative",
+    zIndex: isParentCell ? 1 : "auto"
+  };
+
   if (isEditing) {
     return (
       <input
@@ -169,62 +236,25 @@ const Cell: React.FC<CellProps> = ({
         onChange={(e) => onChange?.(e.target.value)}
         onBlur={onBlur}
         autoFocus
+        style={{
+          gridColumn: isParentCell ? `span ${mergeWidth}` : undefined,
+          gridRow: isParentCell ? `span ${mergeHeight}` : undefined,
+        }}
       />
     );
   }
 
   return (
-    <>
-      <div
-        className={cn(
-          "px-2 py-1 overflow-hidden text-sm whitespace-nowrap h-full flex items-center",
-          data?.error && "text-red-500"
-        )}
-        style={{
-          fontFamily: data?.format?.fontFamily === "serif"
-            ? "serif"
-            : data?.format?.fontFamily === "mono"
-              ? "monospace"
-              : data?.format?.fontFamily === "inter"
-                ? "Inter, sans-serif"
-                : data?.format?.fontFamily === "roboto"
-                  ? "Roboto, sans-serif"
-                  : data?.format?.fontFamily === "poppins"
-                    ? "Poppins, sans-serif"
-                    : "sans-serif",
-          fontSize: data?.format?.fontSize === "xs"
-            ? "10px"
-            : data?.format?.fontSize === "sm"
-              ? "12px"
-              : data?.format?.fontSize === "lg"
-                ? "16px"
-                : data?.format?.fontSize === "xl"
-                  ? "18px"
-                  : data?.format?.fontSize === "2xl"
-                    ? "20px"
-                    : data?.format?.fontSize === "3xl"
-                      ? "24px"
-                      : "14px",
-          fontWeight: data?.format?.bold ? "bold" : "normal",
-          fontStyle: data?.format?.italic ? "italic" : "normal",
-          textDecoration: data?.format?.underline ? "underline" : "none",
-          textAlign: data?.format?.align || "left",
-          color: data?.error ? "red" : (data?.format?.textColor || "inherit"),
-          backgroundColor: data?.format?.fillColor || "transparent",
-          width: "100%",
-          justifyContent: data?.format?.align === "center"
-            ? "center"
-            : data?.format?.align === "right"
-              ? "flex-end"
-              : "flex-start",
-          userSelect: "none"
-        }}
-      >
-        {displayValue}
-      </div>
-
-    
-    </>
+    <div
+      className={cn(
+        "px-2 py-1 overflow-hidden text-sm whitespace-nowrap h-full flex items-center",
+        data?.error && "text-red-500",
+        isParentCell && "merged-cell-parent"
+      )}
+      style={cellStyle}
+    >
+      {displayValue}
+    </div>
   );
 };
 

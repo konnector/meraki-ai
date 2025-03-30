@@ -42,6 +42,15 @@ type Cell = {
   calculatedValue?: any
   error?: string
   format?: CellFormat
+  mergeInfo?: {
+    parent: string;     // The ID of the parent cell (top-left) if this is part of a merge
+    mergeArea?: {       // Only exists on the parent cell
+      startRow: number; 
+      startCol: number;
+      endRow: number;
+      endCol: number;
+    }
+  }
 }
 
 export type Cells = {
@@ -90,6 +99,12 @@ type SpreadsheetContextType = {
   canRedo: () => boolean
   importData: (data: string, options?: ImportOptions) => void
   exportData: (options?: ExportOptions) => string
+  mergeCells: () => void
+  unmergeCells: () => void
+  isCellPartOfMerge: (cellId: string) => boolean
+  isCellMergeParent: (cellId: string) => boolean
+  getMergeParent: (cellId: string) => string | null
+  getCellsByMergeArea: (mergeArea: { startRow: number; startCol: number; endRow: number; endCol: number }) => string[]
 }
 
 const SpreadsheetContext = createContext<SpreadsheetContextType | null>(null)
@@ -940,6 +955,119 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
     return '';
   }, [cells, selection, getSelectedCells, getCellPosition, getCellId, isCellFormula, getCellDisplayValue]);
 
+  const isCellPartOfMerge = useCallback((cellId: string): boolean => {
+    return cells[cellId]?.mergeInfo !== undefined;
+  }, [cells]);
+
+  const isCellMergeParent = useCallback((cellId: string): boolean => {
+    return cells[cellId]?.mergeInfo?.mergeArea !== undefined;
+  }, [cells]);
+
+  const getMergeParent = useCallback((cellId: string): string | null => {
+    if (!isCellPartOfMerge(cellId)) return null;
+    return cells[cellId]?.mergeInfo?.parent || null;
+  }, [cells, isCellPartOfMerge]);
+
+  const getCellsByMergeArea = useCallback((mergeArea: { startRow: number; startCol: number; endRow: number; endCol: number }): string[] => {
+    const cellIds: string[] = [];
+    
+    for (let row = mergeArea.startRow; row <= mergeArea.endRow; row++) {
+      for (let col = mergeArea.startCol; col <= mergeArea.endCol; col++) {
+        cellIds.push(getCellId({ row, col }));
+      }
+    }
+    
+    return cellIds;
+  }, [getCellId]);
+
+  const mergeCells = useCallback(() => {
+    if (!selection) return;
+    
+    // Get the boundaries of the selection
+    const startRow = Math.min(selection.start.row, selection.end.row);
+    const endRow = Math.max(selection.start.row, selection.end.row);
+    const startCol = Math.min(selection.start.col, selection.end.col);
+    const endCol = Math.max(selection.start.col, selection.end.col);
+    
+    // If it's a single cell, no need to merge
+    if (startRow === endRow && startCol === endCol) return;
+    
+    // Get the parent cell ID (top-left of selection)
+    const parentCellId = getCellId({ row: startRow, col: startCol });
+    
+    // Save current state for undo/redo
+    saveToHistory();
+    
+    setCells(prev => {
+      const newCells = { ...prev };
+      
+      // Set up the parent cell's merge info
+      newCells[parentCellId] = {
+        ...newCells[parentCellId],
+        mergeInfo: {
+          parent: parentCellId,
+          mergeArea: {
+            startRow,
+            startCol,
+            endRow,
+            endCol
+          }
+        }
+      };
+      
+      // For all other cells in the selection, mark them as merged
+      for (let row = startRow; row <= endRow; row++) {
+        for (let col = startCol; col <= endCol; col++) {
+          const cellId = getCellId({ row, col });
+          if (cellId !== parentCellId) {
+            newCells[cellId] = {
+              ...newCells[cellId],
+              mergeInfo: {
+                parent: parentCellId
+              }
+            };
+          }
+        }
+      }
+      
+      return newCells;
+    });
+  }, [selection, getCellId, saveToHistory]);
+
+  const unmergeCells = useCallback(() => {
+    if (!activeCell) return;
+    
+    // Get the parent cell ID
+    const parentCellId = getMergeParent(activeCell);
+    if (!parentCellId) return;
+    
+    // Get the merge area
+    const mergeArea = cells[parentCellId]?.mergeInfo?.mergeArea;
+    if (!mergeArea) return;
+    
+    // Save current state for undo/redo
+    saveToHistory();
+    
+    setCells(prev => {
+      const newCells = { ...prev };
+      
+      // Clear merge info from all cells in the merge area
+      for (let row = mergeArea.startRow; row <= mergeArea.endRow; row++) {
+        for (let col = mergeArea.startCol; col <= mergeArea.endCol; col++) {
+          const cellId = getCellId({ row, col });
+          if (newCells[cellId]) {
+            newCells[cellId] = {
+              ...newCells[cellId],
+              mergeInfo: undefined
+            };
+          }
+        }
+      }
+      
+      return newCells;
+    });
+  }, [activeCell, cells, getCellId, getMergeParent, saveToHistory]);
+
   // Update the context value to include all functions
   const value = {
     cells,
@@ -973,6 +1101,12 @@ export function SpreadsheetProvider({ children, spreadsheetId }: { children: Rea
     canRedo: () => historyManager.current.canRedo(),
     importData,
     exportData,
+    mergeCells,
+    unmergeCells,
+    isCellPartOfMerge,
+    isCellMergeParent,
+    getMergeParent,
+    getCellsByMergeArea,
   };
 
   return (

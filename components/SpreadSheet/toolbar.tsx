@@ -19,6 +19,8 @@ import {
   Clock,
   ZoomIn,
   ZoomOut,
+  Combine,
+  Split,
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -123,6 +125,9 @@ export default function Toolbar() {
     canRedo,
     zoomLevel,
     setZoomLevel,
+    mergeCells,
+    unmergeCells,
+    isCellPartOfMerge,
   } = useSpreadsheet()
 
   const handleFormatChange = (format: Record<string, any>) => {
@@ -558,6 +563,44 @@ export default function Toolbar() {
             <span className="text-sm font-medium min-w-[3rem]">{zoomLevel}%</span>
           </div>
         </div>
+
+        <Separator orientation="vertical" className="mx-1" />
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={mergeCells}
+              disabled={!selection || getSelectedCells().length <= 1}
+            >
+              <Combine className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Merge cells</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8"
+              onClick={unmergeCells}
+              disabled={!activeCell || !isCellPartOfMerge(activeCell)}
+            >
+              <Split className="h-4 w-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p>Unmerge cells</p>
+          </TooltipContent>
+        </Tooltip>
+
+        <Separator orientation="vertical" className="mx-1" />
       </div>
     </TooltipProvider>
   )
